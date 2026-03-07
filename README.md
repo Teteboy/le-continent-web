@@ -1,69 +1,69 @@
-# React + TypeScript + Vite
+# Le Continent Web
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A web application dedicated to celebrating and preserving African cultures, languages, and traditions.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Village Section**: Explore African alphabets, history, lexiques, traditional dishes, phrases, and proverbs
+- **Cultures**: Discover African inventions, cultures, and traditions
+- **User Authentication**: Sign up and login with email or phone number
+- **Premium Content**: Access premium culture content
+- **Referral System**: Invite friends and earn benefits
+- **Admin Dashboard**: Manage users, villages, promo codes, and view analytics
 
-## Expanding the ESLint configuration
+## Tech Stack
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- **Frontend**: React, TypeScript, Vite
+- **UI Components**: Shadcn UI
+- **Authentication**: Firebase Auth
+- **Database**: Supabase
+- **Payment**: MTN and Orange Mobile Money integration
+- **Styling**: Tailwind CSS
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Getting Started
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### Prerequisites
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- Node.js 18+
+- npm or yarn
+
+### Installation
+
+```bash
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Build for Production
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run build
 ```
+
+## Project Structure
+
+```
+src/
+├── components/          # Reusable UI components
+│   ├── auth/           # Authentication components
+│   ├── home/           # Home page components
+│   ├── layout/         # Layout components (Navbar, Footer)
+│   ├── payment/        # Payment components
+│   ├── premium/        # Premium content components
+│   └── ui/             # Base UI components
+├── data/               # Static data files
+├── hooks/              # Custom React hooks
+├── lib/                # Utility libraries (Firebase, Supabase)
+├── pages/              # Page components
+│   ├── admin/         # Admin dashboard pages
+│   └── village/       # Village section pages
+├── store/              # State management
+└── types/              # TypeScript type definitions
+```
+
+## License
+
+This project is for educational and cultural preservation purposes.
