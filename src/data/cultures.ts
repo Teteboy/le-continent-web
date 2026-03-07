@@ -1,0 +1,83 @@
+import type { Culture } from '../types';
+
+export const FREE_CULTURES: Culture[] = [
+  {
+    id: '1',
+    name: 'Les Bamiléké',
+    region: "Région de l'Ouest",
+    population: '≈ 3 millions',
+    language: 'Bamiléké (langues bamiléké)',
+    shortDescription: 'Royaumes célèbres pour leurs chefferies et l\'art de la perle',
+    features: [
+      'Architecture des chefferies',
+      'Tissage et perlage',
+      'Danses masquées',
+      "Cérémonies d'initiation",
+    ],
+    color: '#8B0000',
+    icon: '🏛️',
+    image: '/1.jpeg',
+  },
+  {
+    id: '2',
+    name: 'Les Sawa',
+    region: 'Littoral (Douala, Édéa)',
+    population: '≈ 2.5 millions',
+    language: 'Duala, Malimba, Bakoko',
+    shortDescription: 'Peuple côtier, gardiens des traditions maritimes et du Ngondo',
+    features: [
+      'Festival Ngondo',
+      'Cuisine à base de poisson',
+      'Migrations ancestrales',
+      "Rites d'eau",
+    ],
+    color: '#0066CC',
+    icon: '🌊',
+    image: '/onboarding2.jpg',
+  },
+  {
+    id: '3',
+    name: 'Les Peuls (Fulbé)',
+    region: 'Extrême-Nord, Nord, Adamaoua',
+    population: '≈ 4 millions',
+    language: 'Fulfuldé',
+    shortDescription: 'Éleveurs nomades célèbres pour leur littérature orale et code vestimentaire',
+    features: [
+      'Élevage transhumant',
+      'Poésie et musique',
+      'Habillement distinctif',
+      'Savoir pastoral',
+    ],
+    color: '#228B22',
+    icon: '🐄',
+    image: '/onboarding3.jpg',
+  },
+];
+
+export const ALL_CULTURES: Culture[] = [
+  ...FREE_CULTURES,
+  {
+    id: '4',
+    name: 'Les Béti',
+    region: 'Centre, Sud, Littoral',
+    population: '≈ 5 millions',
+    language: 'Ewondo, Bulu, Fang',
+    shortDescription: 'Peuple forestier avec de riches traditions orales et musicales',
+    features: ['Musique bikutsi', 'Artisanat du raphia', 'Chasse traditionnelle', 'Organisation clanique'],
+    color: '#8B4513',
+    icon: '🌳',
+    image: '/onboarding4.jpg',
+  },
+  {
+    id: '5',
+    name: 'Les Bamoun',
+    region: "Région de l'Ouest (Foumban)",
+    population: '≈ 500 000',
+    language: 'Bamoun (Shümom)',
+    shortDescription: 'Peuple créateur d\'un alphabet original et d\'une culture royale unique',
+    features: ["Alphabet bamoun créé par le Sultan Ibrahim", 'Palais royal de Foumban', 'Artisanat bronze', 'Broderie'],
+    color: '#9B59B6',
+    icon: '👑',
+    image: '/onboarding1.jpg',
+  },
+];
