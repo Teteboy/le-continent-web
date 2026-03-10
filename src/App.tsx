@@ -21,6 +21,9 @@ import AboutPage from '@/pages/AboutPage';
 import ContactPage from '@/pages/ContactPage';
 import PrivacyPage from '@/pages/PrivacyPage';
 import TermsPage from '@/pages/TermsPage';
+import CheckoutPage from '@/pages/CheckoutPage';
+import PaymentSuccessPage from '@/pages/PaymentSuccessPage';
+import PaymentCancelPage from '@/pages/PaymentCancelPage';
 import AdminDashboard from '@/pages/admin/AdminDashboard';
 import { useAuth } from '@/hooks/useAuth';
 import { type ReactNode, useEffect } from 'react';
@@ -96,6 +99,9 @@ function AppRoutes() {
       <Route path="/contact" element={<Layout><ContactPage /></Layout>} />
       <Route path="/privacy" element={<Layout><PrivacyPage /></Layout>} />
       <Route path="/terms" element={<Layout><TermsPage /></Layout>} />
+      <Route path="/checkout" element={<CheckoutPage />} />
+      <Route path="/payment/success" element={<PaymentSuccessPage />} />
+      <Route path="/payment/cancel" element={<PaymentCancelPage />} />
 
       {/* Guest-only routes (redirect to /cultures if logged in) */}
       <Route path="/login" element={<GuestRoute><LoginPage /></GuestRoute>} />

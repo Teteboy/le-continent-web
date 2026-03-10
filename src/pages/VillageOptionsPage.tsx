@@ -58,7 +58,7 @@ export default function VillageOptionsPage() {
   };
 
   const handleContact = () => {
-    window.open('https://wa.me/237691372897', '_blank');
+    window.open('https://wa.me/237672549955', '_blank');
   };
 
   return (
@@ -145,3 +145,4 @@ export default function VillageOptionsPage() {
     </div>
   );
 }
+

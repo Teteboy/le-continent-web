@@ -19,7 +19,7 @@ const contactInfo = [
   {
     icon: <Phone size={22} className="text-[#8B0000]" />,
     title: 'Téléphone',
-    lines: ['+237 6 XX XXX XXX', 'MTN & Orange Money'],
+    lines: ['+237 672 549 955', 'MTN & Orange Money'],
   },
   {
     icon: <Clock size={22} className="text-[#8B0000]" />,
