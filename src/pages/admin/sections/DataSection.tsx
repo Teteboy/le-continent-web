@@ -139,7 +139,7 @@ function FieldEditor({ colKey, value, colType, onChange }: FieldEditorProps) {
           className="border-[#8B0000]/30 focus-visible:ring-[#8B0000]"
           placeholder={colType === 'url' ? 'https://…' : `Saisir ${label.toLowerCase()}…`}
         />
-        {colType === 'url' && value && (
+        {colType === 'url' && value !== null && value !== undefined && (
           <a
             href={String(value)}
             target="_blank"
@@ -647,9 +647,9 @@ export default function DataSection() {
                 ? `+ Nouvelle ligne — ${currentTableInfo.label}`
                 : `Modifier — ${currentTableInfo.label}`}
             </DialogTitle>
-            {!isAdding && editRow?.id && (
+            {!isAdding && editRow && (
               <p className="text-[10px] text-gray-400 font-mono mt-0.5">
-                ID : {String(editRow.id)}
+                ID : {String((editRow as Record<string, unknown>).id)}
               </p>
             )}
           </DialogHeader>
@@ -729,8 +729,8 @@ export default function DataSection() {
           <div className="mt-2 space-y-4">
             <p className="text-gray-600 text-sm leading-relaxed">
               Cette action est <strong>irréversible</strong>. La ligne
-              {deleteTarget?.id && (
-                <> avec l'ID <code className="font-mono text-[#8B0000] bg-red-50 px-1.5 py-0.5 rounded text-xs">{String(deleteTarget.id).slice(0, 8)}…</code></>
+              {deleteTarget && (
+                <> avec l'ID <code className="font-mono text-[#8B0000] bg-red-50 px-1.5 py-0.5 rounded text-xs">{String((deleteTarget as Record<string, unknown>).id).slice(0, 8)}…</code></>
               )}{' '}
               sera définitivement supprimée de la table <strong>{currentTableInfo.label}</strong>.
             </p>
