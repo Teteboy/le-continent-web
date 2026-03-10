@@ -26,6 +26,7 @@ import PaymentSuccessPage from '@/pages/PaymentSuccessPage';
 import PaymentCancelPage from '@/pages/PaymentCancelPage';
 import AdminDashboard from '@/pages/admin/AdminDashboard';
 import { useAuth } from '@/hooks/useAuth';
+import { AuthProvider } from '@/providers/AuthProvider';
 import { type ReactNode, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 
@@ -131,8 +132,10 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <AppRoutes />
-        <Toaster richColors position="top-right" />
+        <AuthProvider>
+          <AppRoutes />
+          <Toaster richColors position="top-right" />
+        </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>
   );

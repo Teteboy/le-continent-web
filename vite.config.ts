@@ -13,15 +13,17 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        admin: path.resolve(__dirname, 'admin.html'),
+      },
       output: {
-        // Add content hash to filenames for cache busting
         entryFileNames: 'assets/[name]-[hash].js',
         chunkFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash].[ext]',
       },
     },
   },
-  // Ensure browser doesn't cache during development
   server: {
     headers: {
       'Cache-Control': 'no-cache, no-store, must-revalidate',

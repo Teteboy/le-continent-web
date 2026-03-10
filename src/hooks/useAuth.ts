@@ -1,37 +1,15 @@
-import { useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 
+/**
+ * useAuth is a pure store selector — no side effects.
+ * Auth initialization is handled once by AuthProvider (src/providers/AuthProvider.tsx).
+ * This prevents the "Lock broken by another request" Supabase auth error
+ * that occurred when multiple components each created their own
+ * onAuthStateChange subscriptions concurrently.
+ */
 export function useAuth() {
-  const { user, session, profile, loading, setUser, setSession, setProfile, setLoading, reset } = useAuthStore();
-
-  useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.user.id);
-      } else {
-        setLoading(false);
-      }
-    });
-
-    // Listen to auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        await fetchProfile(session.user.id);
-      } else {
-        setProfile(null);
-        setLoading(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const { user, session, profile, loading, setProfile, setLoading, reset } = useAuthStore();
 
   const fetchProfile = async (userId: string) => {
     try {
@@ -55,5 +33,12 @@ export function useAuth() {
     reset();
   };
 
-  return { user, session, profile, loading, signOut, refetchProfile: () => user && fetchProfile(user.id) };
+  return {
+    user,
+    session,
+    profile,
+    loading,
+    signOut,
+    refetchProfile: () => user && fetchProfile(user.id),
+  };
 }
