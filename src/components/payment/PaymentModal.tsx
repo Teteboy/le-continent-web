@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/hooks/useAuth';
 import type { PromoCode } from '@/types';
 
 const ORIGINAL_PRICE = 1000;
@@ -25,8 +26,10 @@ function calcFinalPrice(code: PromoCode): number {
 }
 
 export default function PaymentModal({ open, onClose }: Props) {
+  const { user, profile } = useAuth();
   const [phone, setPhone] = useState('');
   const [selectedMethod, setSelectedMethod] = useState<'mtn' | 'orange' | ''>('');
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   // Promo code state
@@ -97,8 +100,43 @@ export default function PaymentModal({ open, onClose }: Props) {
   };
 
   const handlePay = async () => {
-    // Show payment unavailable message
-    setError('Le système de paiement est en maintenance. Veuillez nous contacter directement.');
+    if (!phone.trim() || !selectedMethod) {
+      setError('Veuillez entrer votre numéro de téléphone');
+      return;
+    }
+
+    setError('');
+    setLoading(true);
+
+    try {
+      // Call backend to create Paydunya invoice
+      const response = await fetch('/api/payment/initiate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: phone.trim(),
+          amount: finalPrice,
+          method: selectedMethod,
+          userId: user?.id,
+          userEmail: user?.email,
+          userName: profile ? `${profile.first_name} ${profile.last_name}`.trim() : undefined
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.checkoutUrl) {
+        // Redirect to Paydunya checkout
+        window.location.href = data.checkoutUrl;
+      } else {
+        setError(data.error || 'Erreur lors de l\'initialisation du paiement');
+      }
+    } catch (err) {
+      console.error('Payment error:', err);
+      setError('Erreur de connexion. Veuillez réessayer.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleClose = () => {
@@ -245,10 +283,19 @@ export default function PaymentModal({ open, onClose }: Props) {
             </Button>
             <Button
               onClick={handlePay}
-              disabled={!selectedMethod || !phone.trim()}
+              disabled={loading || !selectedMethod || !phone.trim()}
               className="flex-1 bg-[#27AE60] hover:bg-[#219A52] text-white font-bold"
             >
-              <Lock size={14} /> Payer {finalPrice.toLocaleString('fr-FR')} FCFA
+              {loading ? (
+                <span className="flex items-center gap-2">
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Traitement...
+                </span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <Lock size={14} /> Payer {finalPrice.toLocaleString('fr-FR')} FCFA
+                </span>
+              )}
             </Button>
           </div>
         </div>
