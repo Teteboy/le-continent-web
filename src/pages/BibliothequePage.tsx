@@ -78,6 +78,7 @@ export default function BibliothequePage() {
     }
   };
 
+  // Group books by category
   const booksByCategory = books.reduce((acc, book) => {
     const category = book.category || 'Autres';
     if (!acc[category]) {
@@ -88,6 +89,19 @@ export default function BibliothequePage() {
   }, {} as Record<string, CultureBook[]>);
 
   const categories = Object.keys(booksByCategory).sort();
+
+  // For free users, limit to 3 books per category
+  const displayedBooksByCategory = Object.fromEntries(
+    Object.entries(booksByCategory).map(([category, categoryBooks]) => [
+      category,
+      isPremium ? categoryBooks : categoryBooks.slice(0, 3)
+    ])
+  );
+
+  const hasMoreBooks = (category: string) => {
+    if (isPremium) return false;
+    return (booksByCategory[category]?.length ?? 0) > 3;
+  };
 
   const handleBookClick = (book: CultureBook) => {
     setSelectedBookId(book.id);
@@ -380,7 +394,7 @@ export default function BibliothequePage() {
                 </div>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {booksByCategory[category].map((book) => (
+                  {displayedBooksByCategory[category].map((book) => (
                     <div
                       key={book.id}
                       onClick={() => handleBookClick(book)}
@@ -422,6 +436,17 @@ export default function BibliothequePage() {
                     </div>
                   ))}
                 </div>
+
+                {/* Show more button for free users */}
+                {hasMoreBooks(category) && (
+                  <button
+                    onClick={handleUpgrade}
+                    className="w-full mt-3 py-3 bg-[#FFD700] hover:bg-yellow-400 text-[#8B0000] font-bold rounded-xl flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <Crown size={16} />
+                    Voir plus de {category}
+                  </button>
+                )}
               </div>
             ))}
           </div>

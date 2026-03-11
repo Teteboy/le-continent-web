@@ -89,7 +89,7 @@ export default function ProverbesPage() {
               <h1 className="text-2xl font-black text-[#2C3E50]">Proverbes de {village?.name}</h1>
               {!loading && (
                 <p className="text-gray-500 text-sm mt-0.5">
-                  {proverbes.length} proverbe{proverbes.length > 1 ? 's' : ''}
+                  Contenu en vedette
                   {!isPremium && lockedCount > 0 && ` · ${lockedCount} verrouillé${lockedCount > 1 ? 's' : ''}`}
                 </p>
               )}

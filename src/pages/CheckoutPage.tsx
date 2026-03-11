@@ -1,22 +1,7 @@
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Check, Lock } from 'lucide-react';
+import { Check, AlertCircle, MapPin } from 'lucide-react';
 
 export default function CheckoutPage() {
-  const [selectedMethod, setSelectedMethod] = useState<'mtn' | 'orange'>('mtn');
-  const [phone, setPhone] = useState('+237 672 549 955');
-  const [isProcessing, setIsProcessing] = useState(false);
-
-  const handlePayment = async () => {
-    setIsProcessing(true);
-    
-    // Simulate payment processing
-    setTimeout(() => {
-      // In production, this would call the payment API
-      window.location.href = 'https://lecontinent.cm/payment/success';
-    }, 2000);
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#8B0000] to-[#2C3E50] py-12 px-4">
       <div className="max-w-lg mx-auto bg-white rounded-2xl overflow-hidden shadow-2xl">
@@ -52,71 +37,47 @@ export default function CheckoutPage() {
             ))}
           </ul>
 
-          {/* Payment Methods */}
-          <div className="mb-6">
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-              Méthode de paiement
-            </h3>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setSelectedMethod('mtn')}
-                className={`flex-1 py-4 border-2 rounded-xl text-center transition-all ${
-                  selectedMethod === 'mtn' 
-                    ? 'border-[#8B0000] bg-red-50' 
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <div className="font-bold text-yellow-500">MTN</div>
-                <div className="text-xs text-gray-500">Mobile Money</div>
-              </button>
-              <button
-                onClick={() => setSelectedMethod('orange')}
-                className={`flex-1 py-4 border-2 rounded-xl text-center transition-all ${
-                  selectedMethod === 'orange' 
-                    ? 'border-[#8B0000] bg-red-50' 
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <div className="font-bold text-orange-500">Orange</div>
-                <div className="text-xs text-gray-500">Money</div>
-              </button>
+          {/* Payment Unavailable Notice */}
+          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="text-amber-600 shrink-0 mt-0.5" size={20} />
+              <div>
+                <p className="font-semibold text-amber-800">Paiement non disponible</p>
+                <p className="text-sm text-amber-700 mt-1">
+                  Le système de paiement est en maintenance. Veuillez nous contacter pour procéder manuellement.
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* Phone Input */}
-          <div className="mb-6">
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Numéro de téléphone Mobile Money
-            </label>
-            <input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-lg focus:outline-none focus:border-[#8B0000]"
-            />
+          {/* Contact Info */}
+          <div className="mb-6 p-4 bg-gray-50 rounded-xl">
+            <div className="flex items-start gap-3">
+              <MapPin className="text-[#8B0000] shrink-0 mt-0.5" size={20} />
+              <div>
+                <p className="font-semibold text-gray-800">Nos locaux</p>
+                <p className="text-sm text-gray-600 mt-1">
+                  Awae Laverie<br />
+                  Yaoundé, Cameroun
+                </p>
+              </div>
+            </div>
           </div>
 
-          {/* Pay Button */}
-          <button
-            onClick={handlePayment}
-            disabled={isProcessing}
-            className="w-full bg-[#8B0000] text-white py-4 rounded-xl font-semibold text-lg hover:bg-[#6B0000] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          {/* Contact Button */}
+          <Link
+            to="/contact"
+            className="block w-full py-4 bg-[#8B0000] hover:bg-[#6B0000] text-white font-bold text-center rounded-xl transition-colors"
           >
-            {isProcessing ? 'Traitement en cours...' : 'Payer 1 500 XAF'}
-          </button>
-
-          {/* Security Note */}
-          <div className="flex items-center justify-center gap-2 mt-4 text-gray-400 text-sm">
-            <Lock size={14} />
-            <span>Paiement sécurisé par MTN et Orange Mobile Money</span>
-          </div>
+            Nous contacter pour paiement
+          </Link>
 
           {/* Back Link */}
-          <Link 
-            to="/" 
-            className="block text-center mt-6 text-gray-500 hover:text-[#8B0000]"
+          <Link
+            to="/cultures"
+            className="block text-center mt-4 text-gray-500 hover:text-[#8B0000] font-medium"
           >
-            ← Retour à l'accueil
+            Retour aux cultures
           </Link>
         </div>
       </div>

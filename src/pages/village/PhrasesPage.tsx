@@ -86,7 +86,7 @@ export default function PhrasesPage() {
               <h1 className="text-2xl font-black text-[#2C3E50]">Phrases de {village?.name}</h1>
               {!loading && (
                 <p className="text-gray-500 text-sm mt-0.5">
-                  {phrases.length} phrase{phrases.length > 1 ? 's' : ''}
+                  Contenu en vedette
                   {!isPremium && lockedCount > 0 && ` · ${lockedCount} verrouillée${lockedCount > 1 ? 's' : ''}`}
                 </p>
               )}

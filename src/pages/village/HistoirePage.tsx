@@ -94,7 +94,7 @@ export default function HistoirePage() {
           <h1 className="text-2xl font-black text-[#2C3E50] mb-1">Histoire de {village?.name}</h1>
           {!loading && (
             <p className="text-gray-500 text-sm">
-              {filtered.length} récit{filtered.length > 1 ? 's' : ''}
+              Contenu en vedette
               {!isPremium && lockedCount > 0 && ` · ${lockedCount} verrouillé${lockedCount > 1 ? 's' : ''}`}
             </p>
           )}

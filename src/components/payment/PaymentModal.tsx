@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Shield, Phone, Lock, Tag, Check, Loader2, X } from 'lucide-react';
+import { Shield, Phone, Lock, Tag, Check, Loader2, X, MapPin } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -98,13 +98,8 @@ export default function PaymentModal({ open, onClose }: Props) {
   };
 
   const handlePay = async () => {
-    if (!phone.trim()) { setError('Entrez votre numéro de téléphone.'); return; }
-    if (!selectedMethod) { setError('Choisissez un opérateur.'); return; }
-    setError('');
-    setLoading(true);
-
-    // Redirect to checkout page
-    window.location.href = 'https://lecontinent.cm/checkout';
+    // Show payment unavailable message
+    setError('Le système de paiement est en maintenance. Veuillez nous contacter directement.');
   };
 
   const handleClose = () => {
@@ -228,7 +223,18 @@ export default function PaymentModal({ open, onClose }: Props) {
             <p>Votre paiement est sécurisé via MTN et Orange Mobile Money.</p>
           </div>
 
-          {error && <p className="text-red-600 text-sm font-medium">{error}</p>}
+          {error && (
+            <div className="space-y-2">
+              <p className="text-red-600 text-sm font-medium">{error}</p>
+              <div className="flex items-start gap-2 p-3 bg-gray-50 rounded-lg">
+                <MapPin size={16} className="text-[#8B0000] mt-0.5 shrink-0" />
+                <div className="text-sm text-gray-600">
+                  <p className="font-medium text-gray-800">Awae Laverie, Yaoundé</p>
+                  <p className="text-xs text-gray-500">Cameroun</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center justify-center gap-2 text-green-600 text-xs">
             <Shield size={12} /> Paiement sécurisé par MTN et Orange Money

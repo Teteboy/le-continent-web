@@ -71,7 +71,7 @@ export default function Footer() {
             <ul className="space-y-3 text-sm text-white/70">
               <li className="flex items-start gap-2">
                 <MapPin size={14} className="text-[#FFD700] shrink-0 mt-0.5" />
-                <span>Rue de la Culture 12<br />Douala, Cameroun</span>
+                <span>Awae Laverie<br />Yaoundé, Cameroun</span>
               </li>
               <li className="flex items-center gap-2">
                 <Mail size={14} className="text-[#FFD700] shrink-0" />

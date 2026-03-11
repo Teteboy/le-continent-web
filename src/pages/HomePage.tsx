@@ -214,19 +214,30 @@ export default function HomePage() {
                   3 contenus gratuits par catégorie • Le reste est Premium
                 </p>
                 <div className="flex gap-3 pt-2">
-                  <Button
-                    variant="outline"
-                    className="flex-1 border-[#8B0000]/30 text-[#8B0000] hover:bg-[#8B0000] hover:text-white"
-                    onClick={handleExploreFree}
-                  >
-                    Explorer gratuitement
-                  </Button>
-                  <Button
-                    className="flex-1 bg-[#FFD700] text-[#8B0000] hover:bg-yellow-400 font-bold"
-                    onClick={handleUpgrade}
-                  >
-                    Passer Premium
-                  </Button>
+                  {isPremium ? (
+                    <Button
+                      className="flex-1 bg-[#FFD700] text-[#8B0000] hover:bg-yellow-400 font-bold"
+                      onClick={handleExploreFree}
+                    >
+                      Explorer
+                    </Button>
+                  ) : (
+                    <>
+                      <Button
+                        variant="outline"
+                        className="flex-1 border-[#8B0000]/30 text-[#8B0000] hover:bg-[#8B0000] hover:text-white"
+                        onClick={handleExploreFree}
+                      >
+                        Explorer gratuitement
+                      </Button>
+                      <Button
+                        className="flex-1 bg-[#FFD700] text-[#8B0000] hover:bg-yellow-400 font-bold"
+                        onClick={handleUpgrade}
+                      >
+                        Passer Premium
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             </>
