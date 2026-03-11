@@ -70,11 +70,21 @@ export default function HistoirePage() {
   };
 
   const villageParam = encodeURIComponent(JSON.stringify(village));
-  const filtered = histoires.filter(item => item.title.toLowerCase().includes(search.toLowerCase()));
-  const freeItems = filtered.slice(0, FREE_LIMIT);
-  const lockedItems = filtered.slice(FREE_LIMIT);
-  const visibleItems = isPremium ? filtered : freeItems;
-  const lockedCount = isPremium ? 0 : Math.max(0, histoires.length - FREE_LIMIT);
+
+  // First separate free and locked items from original list
+  const freeItemsAll = histoires.slice(0, FREE_LIMIT);
+  const lockedItemsAll = histoires.slice(FREE_LIMIT);
+
+  // Then filter each group separately
+  const filteredFree = freeItemsAll.filter(item =>
+    item.title.toLowerCase().includes(search.toLowerCase())
+  );
+  const filteredLocked = lockedItemsAll.filter(item =>
+    item.title.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const visibleItems = isPremium ? [...filteredFree, ...filteredLocked] : filteredFree;
+  const lockedCount = isPremium ? 0 : filteredLocked.length;
 
   const closeModal = () => {
     stopSound();
@@ -95,7 +105,7 @@ export default function HistoirePage() {
           {!loading && (
             <p className="text-gray-500 text-sm">
               Contenu en vedette
-              {!isPremium && lockedCount > 0 && ` · ${lockedCount} verrouillé${lockedCount > 1 ? 's' : ''}`}
+              {!isPremium && lockedCount > 0 && ` · 500+ verrouillés`}
             </p>
           )}
           <div className="relative mt-3">
@@ -159,7 +169,7 @@ export default function HistoirePage() {
           </button>
         ))}
 
-        {!isPremium && lockedItems.map((item) => (
+        {!isPremium && filteredLocked.map((item) => (
           <LockedItem key={item.id} onUpgrade={handleUpgrade}>
             <div className="flex items-center gap-4 bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
               <div className="w-20 h-20 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">

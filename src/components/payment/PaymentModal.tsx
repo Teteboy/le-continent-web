@@ -112,7 +112,7 @@ export default function PaymentModal({ open, onClose }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-md rounded-2xl">
+      <DialogContent className="max-w-md rounded-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-2xl font-extrabold text-[#8B0000]">Paiement Premium</DialogTitle>
           <p className="text-sm text-gray-500 mt-1">Accédez à tout le contenu culturel du Cameroun</p>

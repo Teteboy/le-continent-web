@@ -68,15 +68,22 @@ export default function LexiquePage() {
 
   const villageParam = encodeURIComponent(JSON.stringify(village));
 
-  const filtered = lexique.filter(item =>
+  // First separate free and locked items from original list
+  const freeItemsAll = lexique.slice(0, FREE_LIMIT);
+  const lockedItemsAll = lexique.slice(FREE_LIMIT);
+
+  // Then filter each group separately
+  const filteredFree = freeItemsAll.filter(item =>
+    item.french.toLowerCase().includes(search.toLowerCase()) ||
+    item.local.toLowerCase().includes(search.toLowerCase())
+  );
+  const filteredLocked = lockedItemsAll.filter(item =>
     item.french.toLowerCase().includes(search.toLowerCase()) ||
     item.local.toLowerCase().includes(search.toLowerCase())
   );
 
-  const freeItems = filtered.slice(0, FREE_LIMIT);
-  const lockedItems = filtered.slice(FREE_LIMIT);
-  const visibleItems = isPremium ? filtered : freeItems;
-  const lockedCount = isPremium ? 0 : Math.max(0, lexique.length - FREE_LIMIT);
+  const visibleItems = isPremium ? [...filteredFree, ...filteredLocked] : filteredFree;
+  const lockedCount = isPremium ? 0 : filteredLocked.length;
 
   return (
     <div className="min-h-screen bg-[#F8F9FA]">
@@ -93,7 +100,7 @@ export default function LexiquePage() {
           {!loading && (
             <p className="text-gray-500 text-sm">
               Contenu en vedette
-              {!isPremium && lockedCount > 0 && ` · ${lockedCount} verrouillé${lockedCount > 1 ? 's' : ''}`}
+              {!isPremium && lockedCount > 0 && ` · 1500+ verrouillés`}
             </p>
           )}
           {/* Search */}
@@ -167,7 +174,7 @@ export default function LexiquePage() {
               ))}
 
               {/* Locked rows */}
-              {!isPremium && lockedItems.map((item) => (
+              {!isPremium && filteredLocked.map((item) => (
                 <LockedItem key={item.id} onUpgrade={handleUpgrade}>
                   <div className="grid grid-cols-[1fr_1fr_auto] gap-4 items-center px-4 py-4 border-b border-gray-100">
                     <span className="font-semibold text-[#2C3E50] text-sm">{item.french}</span>
@@ -184,7 +191,7 @@ export default function LexiquePage() {
               </div>
             )}
 
-            {search && filtered.length === 0 && (
+            {search && filteredFree.length + filteredLocked.length === 0 && (
               <div className="flex flex-col items-center justify-center py-16 gap-3">
                 <Search size={40} className="text-gray-300" />
                 <p className="text-gray-500">Aucun résultat pour « {search} »</p>

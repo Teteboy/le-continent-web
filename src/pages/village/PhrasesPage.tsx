@@ -87,7 +87,7 @@ export default function PhrasesPage() {
               {!loading && (
                 <p className="text-gray-500 text-sm mt-0.5">
                   Contenu en vedette
-                  {!isPremium && lockedCount > 0 && ` · ${lockedCount} verrouillée${lockedCount > 1 ? 's' : ''}`}
+                  {!isPremium && lockedCount > 0 && ` · 600+ verrouillées`}
                 </p>
               )}
             </div>

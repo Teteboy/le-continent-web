@@ -90,7 +90,7 @@ export default function ProverbesPage() {
               {!loading && (
                 <p className="text-gray-500 text-sm mt-0.5">
                   Contenu en vedette
-                  {!isPremium && lockedCount > 0 && ` · ${lockedCount} verrouillé${lockedCount > 1 ? 's' : ''}`}
+                  {!isPremium && lockedCount > 0 && ` · 800+ verrouillés`}
                 </p>
               )}
             </div>
