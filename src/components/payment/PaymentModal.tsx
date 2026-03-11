@@ -27,7 +27,6 @@ function calcFinalPrice(code: PromoCode): number {
 export default function PaymentModal({ open, onClose }: Props) {
   const [phone, setPhone] = useState('');
   const [selectedMethod, setSelectedMethod] = useState<'mtn' | 'orange' | ''>('');
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   // Promo code state
@@ -241,24 +240,15 @@ export default function PaymentModal({ open, onClose }: Props) {
           </div>
 
           <div className="flex gap-3">
-            <Button variant="outline" onClick={handleClose} className="flex-1" disabled={loading}>
+            <Button variant="outline" onClick={handleClose} className="flex-1">
               Annuler
             </Button>
             <Button
               onClick={handlePay}
-              disabled={loading || !selectedMethod || !phone.trim()}
+              disabled={!selectedMethod || !phone.trim()}
               className="flex-1 bg-[#27AE60] hover:bg-[#219A52] text-white font-bold"
             >
-              {loading ? (
-                <span className="flex items-center gap-2">
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Traitement...
-                </span>
-              ) : (
-                <span className="flex items-center gap-2">
-                  <Lock size={14} /> Payer {finalPrice.toLocaleString('fr-FR')} FCFA
-                </span>
-              )}
+              <Lock size={14} /> Payer {finalPrice.toLocaleString('fr-FR')} FCFA
             </Button>
           </div>
         </div>
