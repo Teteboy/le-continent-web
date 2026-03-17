@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import {
   ArrowLeft, MessageSquare, BookOpen, Clock, UtensilsCrossed,
@@ -5,6 +6,30 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
+import { useQueryClient } from '@tanstack/react-query';
+import { FREE_LIMIT, ITEMS_PER_PAGE } from '@/hooks/useVillageContent';
+
+// Get API base URL
+const isDev = import.meta.env.DEV;
+const API_BASE = import.meta.env.VITE_API_URL 
+  ? import.meta.env.VITE_API_URL
+  : (isDev ? 'http://localhost:3000' : 'https://api.lecontinent.cm');
+
+// Generate fake locked count for free users (same as useVillageContent)
+function generateFakeLockedCount(tableName: string): number {
+  const ranges: Record<string, number[]> = {
+    mets: [1200, 1500, 1800, 2000, 2200, 2500, 2800, 3000],
+    proverbes: [800, 1000, 1200, 1500, 1800, 2000, 2200, 2500],
+    phrases: [600, 800, 1000, 1200, 1500, 1800, 2000, 2200],
+    lexique: [1500, 1800, 2000, 2200, 2500, 2800, 3000, 3500],
+    histoires: [300, 400, 500, 600, 700, 800, 900, 1000],
+    alphabet: [200, 300, 400, 500, 600, 700, 800, 900],
+    cultures_books: [100, 150, 200, 250, 300, 350, 400, 450],
+  };
+  
+  const options = ranges[tableName] || [500, 700, 1000, 1500, 2000, 2500, 3000, 3500];
+  return options[Math.floor(Math.random() * options.length)];
+}
 
 interface VillageOption {
   id: string;
@@ -28,6 +53,7 @@ export default function VillageOptionsPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { profile } = useAuth();
+  const queryClient = useQueryClient();
   const isPremium = profile?.is_premium ?? false;
 
   let village: { id: string; name: string; region?: string } | null = null;
@@ -37,6 +63,59 @@ export default function VillageOptionsPage() {
   } catch {
     village = null;
   }
+
+  // Eagerly prefetch ALL village content when page loads - makes navigation instant
+  useEffect(() => {
+    if (!village?.id) return;
+    
+    // Track if effect was cancelled to prevent state updates after unmount
+    let cancelled = false;
+    
+    // Table names and their corresponding orderBy (must match what pages use)
+    const tableConfig = [
+      { table: 'lexique', orderBy: 'french' },
+      { table: 'alphabet', orderBy: 'french' },
+      { table: 'proverbes', orderBy: 'created_at' },
+      { table: 'histoires', orderBy: 'title' },
+      { table: 'mets', orderBy: 'name' },
+      { table: 'phrases', orderBy: 'created_at' },
+    ];
+    
+    // Prefetch all pages in parallel for instant navigation
+    tableConfig.forEach(({ table, orderBy }) => {
+      const queryKey = ['village', table, village.id, isPremium ? 'premium' : 'free', 1, ''];
+      
+      // Skip if already cached or effect was cancelled
+      if (cancelled || queryClient.getQueryData(queryKey)) return;
+      
+      const params = new URLSearchParams({
+        page: '1',
+        limit: ITEMS_PER_PAGE.toString(),
+        isPremium: isPremium ? 'true' : 'false',
+        orderBy: orderBy,
+        orderAsc: 'true',
+      });
+      params.append('villageId', village.id);
+
+      fetch(`${API_BASE}/api/content/${table}?${params.toString()}`)
+        .then(res => res.json())
+        .then(data => {
+          if (cancelled || !data) return;
+          queryClient.setQueryData(queryKey, {
+            items: data.items || [],
+            total: data.total || 0,
+            totalPages: data.totalPages || 0,
+            lockedCount: isPremium ? 0 : Math.max(0, (data.total || 0) - FREE_LIMIT),
+            fakeLockedCount: !isPremium ? generateFakeLockedCount(table) : undefined,
+          });
+        })
+        .catch(() => {});
+    });
+    
+    return () => {
+      cancelled = true;
+    };
+  }, [village?.id, isPremium, queryClient]);
 
   if (!village) {
     return (
@@ -52,6 +131,71 @@ export default function VillageOptionsPage() {
   }
 
   const villageParam = encodeURIComponent(JSON.stringify(village));
+
+  // Map UI table IDs to backend table names
+  const getBackendTable = (id: string): string => {
+    if (id === 'histoire') return 'histoires';
+    return id;
+  };
+
+  // Get the orderBy column for each table (must match what pages use)
+  const getOrderBy = (table: string): string => {
+    const orderMap: Record<string, string> = {
+      proverbes: 'created_at',
+      lexique: 'french',
+      histoires: 'title',
+      mets: 'name',
+      alphabet: 'french',
+      phrases: 'created_at',
+    };
+    return orderMap[table] || 'created_at';
+  };
+
+  // Prefetch content on hover using React Query's prefetchQuery
+  // This properly caches data with fakeLockedCount computed
+  const handleHover = async (tableId: string) => {
+    if (village && queryClient) {
+      const table = getBackendTable(tableId);
+      const orderBy = getOrderBy(table);
+      const queryKey = ['village', table, village.id, isPremium ? 'premium' : 'free', 1, ''];
+      
+      // Only prefetch if not already cached or stale
+      const cachedData = queryClient.getQueryData(queryKey);
+      if (cachedData) return;
+      
+      try {
+        const params = new URLSearchParams({
+          page: '1',
+          limit: ITEMS_PER_PAGE.toString(),
+          isPremium: isPremium ? 'true' : 'false',
+          orderBy: orderBy,
+          orderAsc: 'true',
+        });
+        params.append('villageId', village.id);
+
+        const response = await fetch(`${API_BASE}/api/content/${table}?${params.toString()}`);
+        if (response.ok) {
+          const data = await response.json();
+          
+          // Transform the same way useVillageContent does
+          const transformed = {
+            items: data.items || [],
+            total: data.total || 0,
+            totalPages: data.totalPages || 0,
+            lockedCount: isPremium ? 0 : Math.max(0, (data.total || 0) - FREE_LIMIT),
+            fakeLockedCount: !isPremium ? generateFakeLockedCount(table) : undefined,
+          };
+          
+          // Prefetch and cache with proper staleTime
+          await queryClient.prefetchQuery({
+            queryKey,
+            queryFn: () => Promise.resolve(transformed),
+            staleTime: 10 * 60 * 1000, // 10 minutes
+          });
+        }
+      } catch { /* ignore errors */ }
+    }
+  };
 
   const handleOption = (opt: VillageOption) => {
     navigate(`${opt.route}?village=${villageParam}`);
@@ -112,6 +256,7 @@ export default function VillageOptionsPage() {
             <button
               key={opt.id}
               onClick={() => handleOption(opt)}
+              onMouseEnter={() => handleHover(opt.id)}
               className="flex items-center gap-4 bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md hover:-translate-y-0.5 transition-all text-left group"
             >
               <div
