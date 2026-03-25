@@ -317,37 +317,6 @@ export default function HomePage() {
         </DialogContent>
       </Dialog>
 
-      {/* History section */}
-      <section className="py-12 bg-[#F8F9FA]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-2 mb-6">
-            <BookOpen size={20} className="text-[#2980B9]" />
-            <h2 className="text-xl sm:text-2xl font-extrabold text-[#2C3E50]">Histoire du Cameroun</h2>
-          </div>
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 sm:p-8">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-              {[
-                { year: '—3000', event: 'Civilisation Sao' },
-                { year: '1884', event: 'Protectorat allemand' },
-                { year: '1960', event: 'Indépendance' },
-                { year: '1972', event: 'République Unie' },
-              ].map((item) => (
-                <div key={item.year} className="flex items-start gap-3">
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#2980B9] mt-1.5 shrink-0" />
-                  <div>
-                    <p className="font-bold text-[#2980B9] text-sm">{item.year}</p>
-                    <p className="text-xs text-gray-600 mt-0.5">{item.event}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <p className="text-gray-600 text-sm leading-relaxed">
-              De la civilisation Sao aux royaumes Bamoun, Bamiléké et Duala, le Cameroun possède une histoire sur plus de 5 000 ans. Colonisé d'abord par les Allemands, puis partagé entre Français et Britanniques après 1916, le pays a acquis son indépendance le 1ᵉʳ janvier 1960 et est aujourd'hui l'un des pays les plus culturellement diversifiés d'Afrique.
-            </p>
-          </div>
-        </div>
-      </section>
-
       {/* Premium section */}
       <section className="py-12 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -384,6 +353,37 @@ export default function HomePage() {
                 )}
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* History section */}
+      <section className="py-12 bg-[#F8F9FA]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-2 mb-6">
+            <BookOpen size={20} className="text-[#2980B9]" />
+            <h2 className="text-xl sm:text-2xl font-extrabold text-[#2C3E50]">Histoire du Cameroun</h2>
+          </div>
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 sm:p-8">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+              {[
+                { year: '—3000', event: 'Civilisation Sao' },
+                { year: '1884', event: 'Protectorat allemand' },
+                { year: '1960', event: 'Indépendance' },
+                { year: '1972', event: 'République Unie' },
+              ].map((item) => (
+                <div key={item.year} className="flex items-start gap-3">
+                  <div className="w-2.5 h-2.5 rounded-full bg-[#2980B9] mt-1.5 shrink-0" />
+                  <div>
+                    <p className="font-bold text-[#2980B9] text-sm">{item.year}</p>
+                    <p className="text-xs text-gray-600 mt-0.5">{item.event}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-gray-600 text-sm leading-relaxed">
+              De la civilisation Sao aux royaumes Bamoun, Bamiléké et Duala, le Cameroun possède une histoire sur plus de 5 000 ans. Colonisé d'abord par les Allemands, puis partagé entre Français et Britanniques après 1916, le pays a acquis son indépendance le 1ᵉʳ janvier 1960 et est aujourd'hui l'un des pays les plus culturellement diversifiés d'Afrique.
+            </p>
           </div>
         </div>
       </section>
