@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Heart, Lock, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
@@ -26,9 +26,19 @@ interface MedicineRemedy {
 
 // Free category - Anemia/Blood production
 export default function MedecineTraditionnellePage() {
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user, profile } = useAuth();
   const isPremium = profile?.is_premium ?? false;
+
+  // Get village from URL if coming from village page
+  let village: { id: string; name: string } | null = null;
+  try {
+    const raw = searchParams.get('village');
+    village = raw ? JSON.parse(raw) : null;
+  } catch {
+    village = null;
+  }
 
   const [remedies, setRemedies] = useState<MedicineRemedy[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,6 +91,14 @@ export default function MedecineTraditionnellePage() {
     setExpandedCategory(expandedCategory === category ? null : category);
   };
 
+  const handleBack = () => {
+    if (village) {
+      navigate(`/village-options?village=${encodeURIComponent(JSON.stringify(village))}`);
+    } else {
+      navigate('/cultures-premium');
+    }
+  };
+
   const handleUpgrade = () => {
     if (!user) {
       navigate('/inscription');
@@ -117,7 +135,7 @@ export default function MedecineTraditionnellePage() {
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 to-black/70" />
         <div className="relative z-10 h-full flex flex-col px-4 sm:px-6 pt-6 max-w-4xl mx-auto">
           <button
-            onClick={() => navigate('/cultures-premium')}
+            onClick={handleBack}
             className="flex items-center gap-2 text-white/80 hover:text-white font-semibold text-sm mb-auto transition-colors"
           >
             <ArrowLeft size={18} /> Retour

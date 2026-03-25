@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import {
   ArrowLeft, MessageSquare, BookOpen, Clock, UtensilsCrossed,
-  Type, MessageCircle, ExternalLink, Crown, Lock,
+  Type, MessageCircle, ExternalLink, Crown, Lock, Heart,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
@@ -41,6 +41,7 @@ interface VillageOption {
 }
 
 const options: VillageOption[] = [
+  { id: 'medecine', label: 'Médecine Traditionnelle', icon: <Heart size={24} />, description: 'Remèdes et tisanes naturelles', route: '/medecine-traditionnelle', color: '#E74C3C' },
   { id: 'proverbes', label: 'Proverbes', icon: <MessageSquare size={24} />, description: 'Sagesse et proverbes traditionnels', route: '/village/proverbes', color: '#27AE60' },
   { id: 'lexique', label: 'Lexique', icon: <BookOpen size={24} />, description: 'Vocabulaire et traductions', route: '/village/lexique', color: '#2980B9' },
   { id: 'histoire', label: 'Histoire', icon: <Clock size={24} />, description: 'Récits, légendes et contes', route: '/village/histoire', color: '#9B59B6' },
@@ -154,6 +155,9 @@ export default function VillageOptionsPage() {
   // Prefetch content on hover using React Query's prefetchQuery
   // This properly caches data with fakeLockedCount computed
   const handleHover = async (tableId: string) => {
+    // Skip prefetch for medicine page - it's not village-specific
+    if (tableId === 'medecine') return;
+    
     if (village && queryClient) {
       const table = getBackendTable(tableId);
       const orderBy = getOrderBy(table);
@@ -198,7 +202,14 @@ export default function VillageOptionsPage() {
   };
 
   const handleOption = (opt: VillageOption) => {
-    navigate(`${opt.route}?village=${villageParam}`);
+    // Medicine page can optionally include village parameter for back navigation
+    if (opt.id === 'medecine' && village) {
+      navigate(`${opt.route}?village=${villageParam}`);
+    } else if (opt.id === 'medecine') {
+      navigate(opt.route);
+    } else {
+      navigate(`${opt.route}?village=${villageParam}`);
+    }
   };
 
   const handleContact = () => {
@@ -274,9 +285,14 @@ export default function VillageOptionsPage() {
                 <p className="font-bold text-[#2C3E50] text-base">{opt.label}</p>
                 <p className="text-xs text-gray-500 mt-0.5">{opt.description}</p>
               </div>
-              {!isPremium && (
+              {!isPremium && opt.id !== 'medecine' && (
                 <Badge className="bg-gray-100 text-gray-400 border border-gray-200 text-[10px] shrink-0 flex items-center gap-1">
                   <Lock size={8} /> 3 gratuits
+                </Badge>
+              )}
+              {opt.id === 'medecine' && (
+                <Badge className="bg-green-100 text-green-700 border border-green-200 text-[10px] shrink-0">
+                  1 gratuit/cat
                 </Badge>
               )}
             </button>
