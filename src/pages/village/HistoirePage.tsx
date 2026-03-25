@@ -1,17 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Search, Play, Pause, X, BookOpen, Loader2, AlertCircle, RefreshCw, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
-import LockedItem from '@/components/premium/LockedItem';
+import { useVillageContent, FREE_LIMIT, ITEMS_PER_PAGE } from '@/hooks/useVillageContent';
+import VillagePagination from '@/components/village/VillagePagination';
+import LockedItemsList from '@/components/village/LockedItemsList';
 import PremiumCTABanner from '@/components/premium/PremiumCTABanner';
 import PaymentModal from '@/components/payment/PaymentModal';
-
-const FREE_LIMIT = 3;
 
 interface Histoire {
   id: string;
@@ -30,6 +29,7 @@ export default function HistoirePage() {
   const [showPayment, setShowPayment] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedStory, setSelectedStory] = useState<Histoire | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   let village: { id: string; name: string } | null = null;
   try {
@@ -37,31 +37,28 @@ export default function HistoirePage() {
     village = raw ? JSON.parse(raw) : null;
   } catch { village = null; }
 
-  const [histoires, setHistoires] = useState<Histoire[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, isLoading, error, refetch } = useVillageContent<Histoire>({
+    table: 'histoires',
+    villageId: village?.id,
+    isPremium,
+    currentPage,
+    search,
+    searchColumns: ['title'],
+    orderBy: 'title',
+    orderAscending: true,
+  });
 
-  useEffect(() => {
-    if (!village?.id) { setError('Village non spécifié'); setLoading(false); return; }
-    loadData();
-  }, [village?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = data?.totalPages ?? 0;
+  const lockedCount = data?.lockedCount ?? 0;
+  const displayLockedCount = !isPremium && data?.fakeLockedCount ? data.fakeLockedCount : lockedCount;
+  const startItem = (currentPage - 1) * ITEMS_PER_PAGE + 1;
+  const endItem = Math.min(currentPage * ITEMS_PER_PAGE, total);
 
-  const loadData = async () => {
-    try {
-      setLoading(true); setError(null);
-      const { data, error: err } = await supabase
-        .from('histoires')
-        .select('*')
-        .eq('village_id', village!.id)
-        .order('title', { ascending: true });
-      if (err) throw err;
-      setHistoires(data || []);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erreur de chargement';
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
+  const handleSearchChange = (val: string) => {
+    setSearch(val);
+    setCurrentPage(1);
   };
 
   const handleUpgrade = () => {
@@ -69,27 +66,12 @@ export default function HistoirePage() {
     setShowPayment(true);
   };
 
-  const villageParam = encodeURIComponent(JSON.stringify(village));
-
-  // First separate free and locked items from original list
-  const freeItemsAll = histoires.slice(0, FREE_LIMIT);
-  const lockedItemsAll = histoires.slice(FREE_LIMIT);
-
-  // Then filter each group separately
-  const filteredFree = freeItemsAll.filter(item =>
-    item.title.toLowerCase().includes(search.toLowerCase())
-  );
-  const filteredLocked = lockedItemsAll.filter(item =>
-    item.title.toLowerCase().includes(search.toLowerCase())
-  );
-
-  const visibleItems = isPremium ? [...filteredFree, ...filteredLocked] : filteredFree;
-  const lockedCount = isPremium ? 0 : filteredLocked.length;
-
   const closeModal = () => {
     stopSound();
     setSelectedStory(null);
   };
+
+  const villageParam = encodeURIComponent(JSON.stringify(village));
 
   return (
     <div className="min-h-screen bg-[#F8F9FA]">
@@ -101,11 +83,11 @@ export default function HistoirePage() {
           >
             <ArrowLeft size={16} /> Retour
           </button>
-          <h1 className="text-2xl font-black text-[#2C3E50] mb-1">Histoire de {village?.name}</h1>
-          {!loading && (
+          <h1 className="text-2xl font-black text-[#2C3E50] mb-1">Histoire de {village?.name?.split(' (')[0]}</h1>
+          {!isLoading && total > 0 && (
             <p className="text-gray-500 text-sm">
-              Contenu en vedette
-              {!isPremium && lockedCount > 0 && ` · 500+ verrouillés`}
+              {isPremium ? `${startItem}-${endItem} sur ${total} histoires` : `${items.length} histoires gratuites`}
+              {!isPremium && displayLockedCount > 0 && ` · ${displayLockedCount} verrouillées`}
             </p>
           )}
           <div className="relative mt-3">
@@ -113,11 +95,11 @@ export default function HistoirePage() {
             <Input
               placeholder="Rechercher une histoire..."
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={e => handleSearchChange(e.target.value)}
               className="pl-9 pr-9 border-gray-200 focus-visible:ring-[#8B0000]"
             />
             {search && (
-              <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <button onClick={() => handleSearchChange('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                 <X size={14} />
               </button>
             )}
@@ -126,69 +108,92 @@ export default function HistoirePage() {
       </div>
 
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 space-y-3">
-        {loading && (
+        {isLoading && (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
             <Loader2 size={36} className="text-[#8B0000] animate-spin" />
             <p className="text-gray-500">Chargement des histoires...</p>
           </div>
         )}
-        {!loading && error && (
+        {!isLoading && error && (
           <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
             <AlertCircle size={48} className="text-red-500" />
-            <p className="text-gray-600">{error}</p>
-            <Button onClick={loadData} variant="outline" className="flex items-center gap-2"><RefreshCw size={16} /> Réessayer</Button>
+            <p className="text-gray-600">{error instanceof Error ? error.message : 'Erreur de chargement'}</p>
+            <Button onClick={() => refetch()} variant="outline" className="flex items-center gap-2"><RefreshCw size={16} /> Réessayer</Button>
           </div>
         )}
-        {!loading && !error && histoires.length === 0 && (
+        {!isLoading && !error && items.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
             <BookOpen size={56} className="text-gray-300" />
-            <p className="text-gray-500">Aucune histoire disponible pour {village?.name}</p>
+            <p className="text-gray-500">{search ? `Aucun résultat pour « ${search} »` : `Aucune histoire disponible pour ${village?.name?.split(' (')[0]}`}</p>
+            {search && <button onClick={() => handleSearchChange('')} className="text-[#8B0000] text-sm font-semibold hover:underline">Effacer la recherche</button>}
           </div>
         )}
 
-        {!loading && !error && visibleItems.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setSelectedStory(item)}
-            className="w-full flex items-center gap-4 bg-white rounded-2xl p-4 shadow-sm border border-gray-100 hover:shadow-md hover:-translate-y-0.5 transition-all text-left group"
-          >
-            {item.image_url ? (
-              <img src={item.image_url} alt={item.title} className="w-20 h-20 rounded-xl object-cover shrink-0" />
-            ) : (
-              <div className="w-20 h-20 rounded-xl bg-[#9B59B6]/10 flex items-center justify-center shrink-0">
-                <BookOpen size={28} className="text-[#9B59B6]" />
-              </div>
+        {!isLoading && !error && (
+          <div>
+            {/* Unlocked items */}
+            <div className="space-y-3 mb-4">
+              {items.slice(0, isPremium ? ITEMS_PER_PAGE : FREE_LIMIT).map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => navigate(`/village/histoire/${item.id}?village=${encodeURIComponent(JSON.stringify(village))}`)}
+                  className="w-full flex items-center gap-4 bg-white rounded-2xl p-4 shadow-sm border border-gray-100 hover:shadow-md hover:-translate-y-0.5 transition-all text-left group"
+                >
+                  {item.image_url ? (
+                    <img src={item.image_url} alt={item.title} className="w-20 h-20 rounded-xl object-cover shrink-0" />
+                  ) : (
+                    <div className="w-20 h-20 rounded-xl bg-[#9B59B6]/10 flex items-center justify-center shrink-0">
+                      <BookOpen size={28} className="text-[#9B59B6]" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-[#2C3E50] text-base leading-tight">{item.title}</p>
+                    {item.content && (
+                      <p className="text-gray-500 text-sm mt-1 line-clamp-2">{item.content.slice(0, 100)}...</p>
+                    )}
+                  </div>
+                  <ChevronRight size={18} className="text-gray-400 shrink-0 group-hover:text-[#8B0000] transition-colors" />
+                </button>
+              ))}
+            </div>
+
+            {/* Locked items section - show for non-premium if there's fake locked count */}
+            {!isPremium && displayLockedCount > 0 && (
+              <LockedItemsList<Histoire>
+                items={Array(Math.min(5, displayLockedCount)).fill(null).map((_, i) => ({ id: `locked-${i}` } as Histoire))}
+                onUnlock={handleUpgrade}
+                renderItem={() => (
+                  <button className="w-full flex items-center gap-4 p-4 text-left pointer-events-none">
+                    <div className="w-20 h-20 rounded-xl bg-[#9B59B6]/10 flex items-center justify-center shrink-0">
+                      <BookOpen size={28} className="text-[#9B59B6]" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-gray-400 text-base leading-tight">Histoire verrouillée</p>
+                      <p className="text-gray-400 text-sm mt-1">Passez Premium pour voir plus</p>
+                    </div>
+                  </button>
+                )}
+                compact
+              />
             )}
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-[#2C3E50] text-base leading-tight">{item.title}</p>
-              {item.content && (
-                <p className="text-gray-500 text-sm mt-1 line-clamp-2">{item.content.slice(0, 100)}...</p>
-              )}
-            </div>
-            <ChevronRight size={18} className="text-gray-400 shrink-0 group-hover:text-[#8B0000] transition-colors" />
-          </button>
-        ))}
+          </div>
+        )}
 
-        {!isPremium && filteredLocked.map((item) => (
-          <LockedItem key={item.id} onUpgrade={handleUpgrade}>
-            <div className="flex items-center gap-4 bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-              <div className="w-20 h-20 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
-                <BookOpen size={28} className="text-gray-300" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-[#2C3E50] text-base leading-tight">{item.title}</p>
-                {item.content && <p className="text-gray-500 text-sm mt-1 line-clamp-2">{item.content.slice(0, 100)}...</p>}
-              </div>
-            </div>
-          </LockedItem>
-        ))}
+        {!isLoading && !error && !isPremium && displayLockedCount > 0 && (
+          <PremiumCTABanner lockedCount={displayLockedCount} onUpgrade={handleUpgrade} />
+        )}
 
-        {!isPremium && lockedCount > 0 && (
-          <PremiumCTABanner lockedCount={lockedCount} onUpgrade={handleUpgrade} />
+        {/* Pagination - ONLY for premium */}
+        {isPremium && (
+          <VillagePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+          />
         )}
       </div>
 
-      {/* Story Modal */}
+      {/* Story Detail Modal */}
       <Dialog open={!!selectedStory} onOpenChange={closeModal}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto p-0 rounded-2xl">
           {selectedStory && (

@@ -58,6 +58,8 @@ export function useVillageContent<T = Record<string, unknown>>({
   orderBy = 'created_at',
   orderAscending = true,
 }: UseVillageContentOptions) {
+  const enabled = !!villageId;
+  
   return useQuery<VillageContentResult<T>>({
     queryKey: ['village', table, villageId, isPremium ? 'premium' : 'free', currentPage, search.trim()],
     queryFn: async (): Promise<VillageContentResult<T>> => {
@@ -173,7 +175,7 @@ if (!isPremium) {
         lockedCount: 0,
       };
     },
-    enabled: true, // Always enable - handle missing villageId inside queryFn
+    enabled,
     staleTime: 30 * 60 * 1000, // 30 minutes - keep data fresh for instant navigation
     gcTime: 60 * 60 * 1000, // 1 hour
     refetchInterval: false,

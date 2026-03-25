@@ -22,7 +22,7 @@ interface CultureBook {
 
 export default function BibliothequePage() {
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
   const isPremium = profile?.is_premium ?? false;
 
   const [books, setBooks] = useState<CultureBook[]>([]);
@@ -113,6 +113,10 @@ export default function BibliothequePage() {
   };
 
   const handleUpgrade = () => {
+    if (!user) {
+      navigate('/inscription');
+      return;
+    }
     setShowPayment(true);
   };
 

@@ -149,7 +149,7 @@ export default function VillagesSection() {
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
               <div className="absolute bottom-2 left-3">
-                <p className="text-white font-extrabold text-base drop-shadow">{village.name}</p>
+                <p className="text-white font-extrabold text-base drop-shadow">{village.name.split(' (')[0]}</p>
               </div>
             </div>
             <div className="p-4">
@@ -195,7 +195,7 @@ export default function VillagesSection() {
         <DialogContent className="max-w-md rounded-2xl">
           <DialogHeader>
             <DialogTitle className="text-xl font-extrabold text-[#8B0000]">
-              {editVillage ? `Modifier — ${editVillage.name}` : 'Ajouter un village'}
+              {editVillage ? `Modifier — ${editVillage.name.split(' (')[0]}` : 'Ajouter un village'}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-2">

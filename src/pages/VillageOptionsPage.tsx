@@ -56,7 +56,7 @@ export default function VillageOptionsPage() {
   const queryClient = useQueryClient();
   const isPremium = profile?.is_premium ?? false;
 
-  let village: { id: string; name: string; region?: string } | null = null;
+  let village: { id: string; name: string; region?: string; description?: string } | null = null;
   try {
     const raw = searchParams.get('village');
     village = raw ? JSON.parse(raw) : null;
@@ -221,7 +221,12 @@ export default function VillageOptionsPage() {
             <ArrowLeft size={18} /> Retour
           </button>
           <div className="pb-6">
-            <h1 className="text-4xl font-black text-white drop-shadow-lg">{village.name}</h1>
+            <h1 className="text-4xl font-black text-white drop-shadow-lg">{village.name.split(' (')[0]}</h1>
+            {village.name.includes(' (') && (
+              <p className="text-white/60 text-sm mt-1">
+                {village.name.match(/\((.*)\)/)?.[1]}
+              </p>
+            )}
             {village.region && (
               <p className="text-white/70 text-sm mt-1">{village.region}</p>
             )}

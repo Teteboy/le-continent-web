@@ -5,6 +5,7 @@ import {
   ArrowRight, Star, Lock, Globe, BookOpen, Volume2, CheckCircle,
   Utensils, Book, MessageCircle, Scroll, Play, Video, Volume2 as AudioIcon,
   Gift, Users, Crown, Sparkles, Loader2, ChevronLeft, ChevronRight,
+  Heart, Languages,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -30,6 +31,8 @@ const iconMap: Record<string, React.ReactNode> = {
   scroll: <Scroll size={20} />,
   'volume-2': <AudioIcon size={20} />,
   video: <Video size={20} />,
+  languages: <Languages size={20} />,
+  heart: <Heart size={20} />,
 };
 
 const tribeSlides = [
@@ -102,19 +105,45 @@ export default function LandingPage() {
     }
   };
 
-  // Fetch villages from database
-  const { data: villages = [], isLoading } = useQuery<Village[]>({
-    queryKey: ['landing-villages'],
+  // Fetch villages from backend API (with Redis caching for faster loads)
+  const { data: villages = [], error, refetch, isLoading } = useQuery<Village[]>({
+    queryKey: ['villages'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('villages')
-        .select('*')
-        .order('name', { ascending: true });
-      if (error) throw error;
-      return (data ?? []) as Village[];
+      // Use backend API for Redis caching - much faster on repeat visits
+      const isDev = import.meta.env.DEV;
+      const API_BASE = import.meta.env.VITE_API_URL 
+        ? import.meta.env.VITE_API_URL
+        : (isDev ? 'http://localhost:3000' : 'https://api.lecontinent.cm');
+      
+      try {
+        const response = await fetch(`${API_BASE}/api/content/villages`);
+        if (response.ok) {
+          const data = await response.json();
+          return data as Village[];
+        }
+        throw new Error('API response not ok');
+      } catch {
+        // Fallback to Supabase only if API fails
+        const { data, error } = await supabase
+          .from('villages')
+          .select('*')
+          .order('name', { ascending: true });
+        if (error) {
+          throw error;
+        }
+        return (data ?? []) as Village[];
+      }
     },
-    staleTime: 60_000, // Cache for 1 minute
+    staleTime: 10 * 60 * 1000, // 10 minutes - villages don't change often
+    gcTime: 60 * 60 * 1000, // 1 hour
+    refetchInterval: false, // Disable auto-refresh
+    refetchOnMount: true, // Fetch on mount
+    refetchOnWindowFocus: false, // Disable refetch on window focus
+    retry: 1, // Only retry once
+    retryDelay: 500,
   });
+
+  // No manual retry loop needed — TanStack Query handles retries automatically.
 
   // Carousel state for tribe showcase
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -186,6 +215,11 @@ export default function LandingPage() {
             <div className="flex justify-center py-12">
               <Loader2 size={36} className="text-[#8B0000] animate-spin" />
             </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-3">
+              <p className="text-red-500 text-sm">Erreur de chargement des cultures.</p>
+              <button onClick={() => refetch()} className="text-[#8B0000] font-semibold text-sm underline hover:no-underline">Réessayer</button>
+            </div>
           ) : villages.length > 0 ? (
             <div className="relative">
               {/* Carousel container with overflow and animation */}
@@ -210,13 +244,19 @@ export default function LandingPage() {
                             src={village.image_url || 'https://flagcdn.com/w320/cm.png'}
                             alt={village.name}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            loading="lazy"
                             onError={(e) => { (e.target as HTMLImageElement).src = 'https://flagcdn.com/w320/cm.png'; }}
                           />
                           <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                           <div className="absolute bottom-3 left-3 flex items-center gap-2">
                             <span className="text-2xl">🏛️</span>
                             <div>
-                              <p className="text-white font-bold text-sm">{village.name}</p>
+                              <p className="text-white font-bold text-sm truncate" title={village.name}>{village.name.split(' (')[0]}</p>
+                              {village.name.includes(' (') && (
+                                <p className="text-white/60 text-xs truncate" title={village.name}>
+                                  {village.name.match(/\((.*)\)/)?.[1]}
+                                </p>
+                              )}
                               {village.region && <p className="text-white/70 text-xs">{village.region}</p>}
                             </div>
                           </div>
@@ -249,7 +289,7 @@ export default function LandingPage() {
                 <Link to="/cultures" key={culture.id}>
                   <div className="bg-white rounded-2xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 cursor-pointer group hover:-translate-y-1" style={{ borderTop: `4px solid ${culture.color}` }}>
                     <div className="relative h-40 overflow-hidden">
-                      <img src={culture.image} alt={culture.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                      <img src={culture.image} alt={culture.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                       <div className="absolute bottom-3 left-3 flex items-center gap-2">
                         <span className="text-2xl">{culture.icon}</span>
@@ -275,7 +315,7 @@ export default function LandingPage() {
           )}
 
           <div className="text-center mt-10">
-            <Link to="/cultures">
+            <Link to="/cultures-premium">
               <Button size="lg" className="bg-[#8B0000] hover:bg-[#6B0000] text-white font-extrabold px-8 rounded-full shadow-lg flex items-center gap-2 mx-auto">
                 Explorer toutes les cultures <ArrowRight size={18} />
               </Button>
@@ -344,6 +384,7 @@ export default function LandingPage() {
                       src={slide.image}
                       alt={slide.name}
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                      loading="lazy"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
                     <div className="absolute bottom-4 left-4 right-4">
@@ -374,6 +415,17 @@ export default function LandingPage() {
                 }`}
               />
             ))}
+          </div>
+
+          {/* Explore all cultures button */}
+          <div className="flex justify-center mt-8">
+            <Link
+              to="/cultures-premium"
+              className="inline-flex items-center gap-2 px-8 py-3 bg-[#FFD700] hover:bg-yellow-400 text-[#2C3E50] font-bold rounded-full transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+            >
+              Explorer toutes les cultures
+              <ArrowRight size={20} />
+            </Link>
           </div>
         </div>
       </section>
@@ -429,7 +481,9 @@ export default function LandingPage() {
                     </div>
                   </div>
                   <div className="px-6 py-3 bg-gray-50 flex items-center justify-between">
-                    <span className="text-xs text-gray-400">Cliquez pour accéder</span>
+                    <span className="text-xs font-semibold text-[#8B0000] bg-[#8B0000]/10 px-3 py-1.5 rounded-full">
+                      Cliquez pour accéder
+                    </span>
                     <ArrowRight size={16} className="text-[#8B0000] group-hover:translate-x-1 transition-transform" />
                   </div>
                 </div>

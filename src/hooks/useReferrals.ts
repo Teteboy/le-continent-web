@@ -9,6 +9,7 @@ export function useReferrals(userId: string | undefined) {
       if (!userId) return [];
       
       try {
+        console.log('[useReferrals] Fetching referrals for user:', userId);
         const { data, error } = await supabase
           .from('referrals')
           .select('*')
@@ -16,18 +17,23 @@ export function useReferrals(userId: string | undefined) {
           .order('created_at', { ascending: false });
 
         if (error) {
-          // Table might not exist - return empty array gracefully
-          console.warn('Referrals table not available:', error.message);
+          console.error('[useReferrals] Supabase error:', error.message);
           return [];
         }
+        
+        console.log('[useReferrals] Found referrals:', data?.length ?? 0);
         return (data ?? []) as ReferralRecord[];
       } catch (err) {
-        console.warn('Error fetching referrals:', err);
+        console.error('[useReferrals] Exception:', err);
         return [];
       }
     },
     enabled: !!userId,
-    staleTime: 30_000,
-    retry: false, // Don't retry on error since table might not exist
+    staleTime: 5 * 60 * 1000, // 5 minutes - prevent constant refetching
+    refetchInterval: false, // Disable auto-refresh
+    refetchOnWindowFocus: false, // Disable refetch on window focus
+    retry: 1, // Only retry once
+    retryDelay: 500,
   });
 }
+

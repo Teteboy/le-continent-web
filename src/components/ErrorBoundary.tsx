@@ -39,10 +39,10 @@ export class ErrorBoundary extends Component<Props, State> {
       error.message?.includes(msg)
     );
     
-    // For benign React DOM errors, return empty state to allow recovery
+    // For benign React DOM errors, show error but allow recovery
+    // We still show the error UI but with a retry option
     if (isBenignError) {
-      console.warn('[ErrorBoundary] Ignoring benign React error:', error.message);
-      return {};
+      console.warn('[ErrorBoundary] Benign React error (allowing recovery):', error.message);
     }
     
     return {
@@ -56,33 +56,44 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error('[ErrorBoundary] Caught error:', error);
     console.error('[ErrorBoundary] Error info:', errorInfo);
 
-    // Ignore certain known benign React errors that are transient
+    // Check if this is a benign React DOM error
     const ignoreErrors = [
       'insertBefore',
       'removeChild',
       'appendChild',
-      'Failed to execute',
-      'Node',
     ];
     
     const isBenignError = ignoreErrors.some(msg => 
-      error.message?.includes(msg) || error.name?.includes(msg)
+      error.message?.includes(msg)
     );
     
-    // For benign React DOM errors, don't show error UI - just log and continue
+    // For benign React DOM errors, attempt recovery without showing error UI
     if (isBenignError) {
-      console.warn('[ErrorBoundary] Ignoring benign React error:', error.message);
+      console.warn('[ErrorBoundary] Attempting auto-recovery from benign error');
+      // Try to recover by resetting error state immediately
+      setTimeout(() => {
+        this.setState({
+          hasError: false,
+          error: null,
+        });
+      }, 100);
       return;
     }
 
-    // Update error count
+    // For real errors, update error count
     this.setState((prev) => ({
       errorCount: prev.errorCount + 1,
     }));
-
-    // You can also log to an error reporting service here
-    // logErrorToService(error, errorInfo);
   }
+
+  // Attempt to recover from errors by resetting state
+  recoverFromError = () => {
+    this.setState({
+      hasError: false,
+      error: null,
+      errorCount: 0,
+    });
+  };
 
   resetError = () => {
     this.setState({

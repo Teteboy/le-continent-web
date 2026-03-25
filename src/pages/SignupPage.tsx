@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Eye, EyeOff, UserPlus, CheckCircle, ChevronDown, Gift } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,8 +8,15 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { generatePromoCode } from '@/lib/promoCode';
+import { useAuthStore } from '@/store/authStore';
+import { findReferrerByCode, createReferralRecord } from '@/services/referralService';
 import PromoCodeModal from '@/components/auth/PromoCodeModal';
 import { COUNTRY_CODES, DEFAULT_COUNTRY, type CountryCode } from '@/data/countryCodes';
+
+// API base URL - use environment variable or production API
+const API_BASE = import.meta.env.VITE_API_URL 
+  ? import.meta.env.VITE_API_URL
+  : (import.meta.env.DEV ? 'http://localhost:3000' : 'https://api.lecontinent.cm');
 
 export default function SignupPage() {
   const [form, setForm] = useState({
@@ -28,6 +36,47 @@ export default function SignupPage() {
   const [generatedLoginEmail, setGeneratedLoginEmail] = useState('');
   const [referralCode, setReferralCode] = useState('');
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const { setUser, setSession, setProfile, setLoading: setStoreLoading } = useAuthStore();
+
+  const fetchProfileFromCache = async (userId: string) => {
+    try {
+      // Try to fetch from Redis-cached backend endpoint first
+      const response = await fetch(`${API_BASE}/api/auth/profile/${userId}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.profile) {
+          setProfile(result.profile);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('[Signup] Cache fetch failed, using Supabase:', err);
+    }
+    
+    // Fallback to direct Supabase query
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+    if (data) {
+      setProfile(data);
+    }
+  };
+
+  // Read referral code from URL on mount
+  useEffect(() => {
+    const codeFromUrl = searchParams.get('code');
+    if (codeFromUrl) {
+      setReferralCode(codeFromUrl.trim().toUpperCase());
+    }
+  }, [searchParams]);
 
   const set = (key: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [key]: e.target.value }));
@@ -78,20 +127,19 @@ export default function SignupPage() {
 
       const code = generatePromoCode();
 
-      // Process referral if code provided
-      let referredById: string | null = null;
+      // Validate referral code first (before auth)
+      let referrerId: string | null = null;
       if (referralCode.trim()) {
-        const { data: referrerData, error: referrerError } = await supabase
-          .from('profiles')
-          .select('id, promo_code')
-          .eq('promo_code', referralCode.trim())
-          .single();
-        
-        if (!referrerError && referrerData) {
-          referredById = referrerData.id;
+        const { referrer, error } = await findReferrerByCode(referralCode);
+        if (error) {
+          toast.error('Code de parrainage invalide', { description: error });
+        } else if (referrer?.id) {
+          referrerId = referrer.id;
+          toast.success('Code de parrainage appliqué!');
         }
       }
 
+      // Create auth user
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: authEmail,
         password: form.password,
@@ -106,37 +154,51 @@ export default function SignupPage() {
 
       if (authError) throw authError;
       if (!authData.user) throw new Error('Échec de la création du compte.');
+      
 
-      await supabase.from('profiles').upsert(
-        {
-          id: authData.user.id,
-          first_name: form.firstName.trim(),
-          last_name: form.lastName.trim(),
-          phone: fullPhone,
-          email: form.email.trim() ? form.email.trim().toLowerCase() : null,
-          is_premium: false,
-          promo_code: code,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          avatar_url: null,
-          referred_by: referredById,
-          referral_earnings: 0,
-          referral_count: 0,
-        },
-        { onConflict: 'id' }
-      );
 
-      // Create referral record if valid referral
-      if (referredById) {
-        await supabase.from('referrals').insert({
-          referrer_id: referredById,
-          referred_id: authData.user.id,
-          referred_name: `${form.firstName.trim()} ${form.lastName.trim()}`,
-          referred_phone: fullPhone,
-          amount_paid: 0,
-          referral_earnings: 0,
-          created_at: new Date().toISOString(),
-        });
+      // Create profile - use authEmail (which is always set) instead of form.email
+      const profileData = {
+        id: authData.user.id,
+        first_name: form.firstName.trim(),
+        last_name: form.lastName.trim(),
+        phone: fullPhone,
+        email: authEmail.toLowerCase(),
+        is_premium: false,
+        promo_code: code,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        avatar_url: null,
+        referred_by: referrerId,
+        referral_earnings: 0,
+        referral_count: 0,
+      };
+      
+      const { error: profileError } = await supabase.from('profiles').upsert(profileData, { onConflict: 'id' });
+      if (profileError) {
+        console.error('[SignupPage] Profile creation error:', profileError);
+        throw profileError;
+      }
+
+
+      // If user is auto-logged in (session exists), set session and fetch profile from cache
+      if (authData.session) {
+        setSession(authData.session);
+        setUser(authData.user);
+        setStoreLoading(false);
+        await fetchProfileFromCache(authData.user.id);
+      }
+
+      // Create referral record if valid code (non-blocking - don't wait for result)
+      if (referrerId) {
+        // Fire and forget - don't await, don't block signup
+        createReferralRecord(
+          referrerId,
+          authData.user.id,
+          `${form.firstName.trim()} ${form.lastName.trim()}`,
+          fullPhone,
+          queryClient
+        );
       }
 
       setPromoCode(code);
@@ -263,7 +325,8 @@ export default function SignupPage() {
               </p>
             </div>
 
-            {/* Email (optional) */}
+            {/* Email (optional) - COMMENTED OUT per user request */}
+            {/*}
             <div>
               <Label className="text-[#8B0000] font-semibold text-sm flex items-center gap-2">
                 Adresse e-mail
@@ -281,6 +344,7 @@ export default function SignupPage() {
                 Si vous n'avez pas d'email, vous pourrez vous connecter avec votre numéro de téléphone.
               </p>
             </div>
+            {*/}
 
             {/* Password */}
             {[
@@ -341,21 +405,28 @@ export default function SignupPage() {
             </Button>
 
             {/* Referral Code (optional) */}
-            <div className="bg-[#27AE60]/10 border border-[#27AE60]/30 rounded-xl p-4">
-              <Label className="text-[#27AE60] font-semibold text-sm flex items-center gap-2">
-                <Gift size={14} /> Code de parrainage (optionnel)
+            <div className={`border rounded-xl p-4 ${referralCode ? 'bg-[#27AE60]/10 border-[#27AE60]/30' : 'bg-gray-50 border-gray-200'}`}>
+              <Label className={`font-semibold text-sm flex items-center gap-2 ${referralCode ? 'text-[#27AE60]' : 'text-gray-600'}`}>
+                <Gift size={14} /> {referralCode ? 'Code de parrainage appliqué !' : 'Code de parrainage (optionnel)'}
               </Label>
               <p className="text-xs text-gray-500 mb-2 mt-1">
-                Entrez le code de parrainage d'un ami pour bénéficier d'une réduction et l'aider à gagner des commissions.
+                {referralCode 
+                  ? 'Vous bénéficierez dune réduction et votre parrain gagnera une commission.' 
+                  : 'Entrez le code de parrainage d\'un ami pour bénéficier d\'une réduction et l\'aider à gagner des commissions.'}
               </p>
-              <Input
-                type="text"
-                placeholder="CONTINENT-XXXXXX"
-                value={referralCode}
-                onChange={(e) => setReferralCode(e.target.value.toUpperCase().trim())}
-                className="border-[#27AE60]/40 bg-white focus-visible:ring-[#27AE60] h-10"
-                disabled={loading}
-              />
+              <div className="relative">
+                <Input
+                  type="text"
+                  placeholder="CONTINENT-XXXXXX"
+                  value={referralCode}
+                  onChange={(e) => setReferralCode(e.target.value.toUpperCase().trim())}
+                  className={`border-[#27AE60]/40 bg-white focus-visible:ring-[#27AE60] h-10 pr-10 ${referralCode ? 'border-[#27AE60] bg-white' : ''}`}
+                  disabled={loading}
+                />
+                {referralCode && (
+                  <CheckCircle size={18} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#27AE60]" />
+                )}
+              </div>
             </div>
           </form>
 

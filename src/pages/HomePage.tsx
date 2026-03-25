@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Users, BookOpen, Lightbulb, Star, Lock, CheckCircle, MapPin, Clock,
-  Crown, ArrowRight, Sparkles,
+  Crown, ArrowRight, Sparkles, Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,7 +11,6 @@ import { INVENTIONS, TRADITIONAL_JOBS, PREMIUM_CONTENT } from '@/data/inventions
 import { useAuth } from '@/hooks/useAuth';
 import CultureDetailModal from '@/components/home/CultureDetailModal';
 import PaymentModal from '@/components/payment/PaymentModal';
-import { supabase } from '@/lib/supabase';
 import type { Culture } from '@/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
@@ -24,20 +23,79 @@ export default function HomePage() {
   
   // Carousel state for villages
   const [selectedVillage, setSelectedVillage] = useState<{ id: string; name: string; region: string | null; image_url: string | null } | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isUserInteracting = useRef(false);
+  const scrollIntervalRef = useRef<number | null>(null);
 
-  // Fetch villages from database
-  const { data: villages = [] } = useQuery({
-    queryKey: ['home-villages'],
+  // Fetch villages from backend API (with Redis caching for faster loads)
+  const { data: villages = [], isLoading: villagesLoading } = useQuery({
+    queryKey: ['villages'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('villages')
-        .select('*')
-        .order('name', { ascending: true });
-      if (error) throw error;
-      return data ?? [];
+      // Use backend API instead of direct Supabase for Redis caching
+      const API_BASE = import.meta.env.VITE_API_URL 
+        ? import.meta.env.VITE_API_URL
+        : (import.meta.env.DEV ? 'http://localhost:3000' : 'https://api.lecontinent.cm');
+      
+      const response = await fetch(`${API_BASE}/api/content/villages`);
+      if (!response.ok) throw new Error('Failed to fetch villages');
+      return response.json();
     },
-    staleTime: 60_000,
+    // Use specific config for villages - very aggressive caching
+    staleTime: 60 * 60 * 1000, // 1 hour - villages don't change often
+    gcTime: 24 * 60 * 60 * 1000, // 24 hours
+    refetchInterval: false, // Disable auto-refresh
+    refetchOnMount: false, // Don't refetch on mount - use cached data
+    refetchOnWindowFocus: false, // Disable refetch on window focus
+    refetchOnReconnect: false, // Disable refetch on reconnect
+    retry: 1, // Only retry once
+    retryDelay: 500,
   });
+
+  // Auto-scroll effect with pause on hover for manual sliding
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || villages.length === 0) return;
+
+    const startAutoScroll = () => {
+      if (scrollIntervalRef.current) clearInterval(scrollIntervalRef.current);
+      scrollIntervalRef.current = window.setInterval(() => {
+        if (!isUserInteracting.current && container) {
+          const maxScroll = container.scrollWidth - container.clientWidth;
+          if (container.scrollLeft >= maxScroll - 10) {
+            container.scrollTo({ left: 0, behavior: 'smooth' });
+          } else {
+            container.scrollBy({ left: 320, behavior: 'smooth' });
+          }
+        }
+      }, 2500);
+    };
+
+    startAutoScroll();
+
+    // Pause on user interaction
+    const handleMouseDown = () => { isUserInteracting.current = true; };
+    const handleMouseUp = () => { isUserInteracting.current = false; };
+    const handleTouchStart = () => { isUserInteracting.current = true; };
+    const handleTouchEnd = () => { 
+      isUserInteracting.current = false;
+      startAutoScroll();
+    };
+
+    container.addEventListener('mousedown', handleMouseDown);
+    container.addEventListener('mouseup', handleMouseUp);
+    container.addEventListener('touchstart', handleTouchStart);
+    container.addEventListener('touchend', handleTouchEnd);
+
+    return () => {
+      if (scrollIntervalRef.current) clearInterval(scrollIntervalRef.current);
+      container.removeEventListener('mousedown', handleMouseDown);
+      container.removeEventListener('mouseup', handleMouseUp);
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [villages.length]);
+
+  // No manual retry loop needed — TanStack Query handles retries automatically.
 
   const handleVillageClick = (village: { id: string; name: string; region: string | null; image_url: string | null }) => {
     setSelectedVillage(village);
@@ -105,24 +163,30 @@ export default function HomePage() {
             </Link>
           </div>
 
-          {/* Continuous auto-scrolling carousel */}
-          <div className="relative overflow-hidden">
-            {/* Gradient overlays */}
-            <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-white to-transparent z-10 pointer-events-none" />
-            <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent z-10 pointer-events-none" />
+          {/* Loading state */}
+          {villagesLoading && (
+            <div className="flex justify-center items-center py-16 gap-3">
+              <Loader2 size={26} className="text-[#8B0000] animate-spin" />
+              <span className="text-gray-500 text-sm">Chargement des cultures...</span>
+            </div>
+          )}
 
-            {/* Cards container with continuous scroll animation */}
-            <div
-              className="flex gap-6 overflow-hidden"
-              style={{
-                animation: 'scroll 80s linear infinite',
-                width: 'fit-content',
-              }}
-            >
-              {/* Duplicate for seamless loop */}
-              {[...villages, ...villages, ...villages].map((village, idx) => (
-                <div
-                  key={`${village.id}-${idx}`}
+          {/* Auto-sliding carousel with constant scroll */}
+          {!villagesLoading && villages.length > 0 && (
+            <div className="relative overflow-hidden">
+              {/* Gradient overlays */}
+              <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-white to-transparent z-10 pointer-events-none" />
+              <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent z-10 pointer-events-none" />
+
+              {/* Cards container with auto-scroll and manual sliding */}
+              <div
+                ref={scrollContainerRef}
+                className="flex gap-6 overflow-x-auto scrollbar-hide px-10"
+                style={{ scrollBehavior: 'smooth' }}
+              >
+                {villages.map((village: { id: string; name: string; region: string | null; image_url: string | null }) => (
+                  <div
+                    key={village.id}
                   className="flex-shrink-0 w-80 cursor-pointer"
                   onClick={() => handleVillageClick(village)}
                 >
@@ -132,6 +196,7 @@ export default function HomePage() {
                         src={village.image_url || 'https://flagcdn.com/w320/cm.png'}
                         alt={village.name}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        loading="lazy"
                         onError={(e) => { (e.target as HTMLImageElement).src = 'https://flagcdn.com/w320/cm.png'; }}
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/65 to-transparent" />
@@ -139,7 +204,12 @@ export default function HomePage() {
                         <div className="flex items-center gap-2">
                           <span className="text-2xl">🏛️</span>
                           <div>
-                            <p className="text-white font-bold text-sm leading-tight">{village.name}</p>
+                            <p className="text-white font-bold text-sm leading-tight truncate" title={village.name}>{village.name.split(' (')[0]}</p>
+                            {village.name.includes(' (') && (
+                              <p className="text-white/60 text-xs truncate" title={village.name}>
+                                {village.name.match(/\((.*)\)/)?.[1]}
+                              </p>
+                            )}
                             <p className="text-white/70 text-xs">{village.region}</p>
                           </div>
                         </div>
@@ -166,12 +236,13 @@ export default function HomePage() {
                 </div>
               ))}
             </div>
-          </div>
+            </div>
+          )}
 
           <style>{`
             @keyframes scroll {
               0% { transform: translateX(0); }
-              100% { transform: translateX(-33.33%); }
+              100% { transform: translateX(-50%); }
             }
             .scrollbar-hide::-webkit-scrollbar {
               display: none;
@@ -191,7 +262,7 @@ export default function HomePage() {
             <>
               <DialogHeader>
                 <DialogTitle className="text-xl font-extrabold text-[#8B0000]">
-                  🏛️ {selectedVillage.name}
+                  🏛️ {selectedVillage.name.split(' (')[0]}
                 </DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
@@ -199,6 +270,7 @@ export default function HomePage() {
                   src={selectedVillage.image_url || 'https://flagcdn.com/w320/cm.png'}
                   alt={selectedVillage.name}
                   className="w-full h-40 object-cover rounded-xl"
+                  loading="lazy"
                   onError={(e) => { (e.target as HTMLImageElement).src = 'https://flagcdn.com/w320/cm.png'; }}
                 />
                 {selectedVillage.region && (
@@ -276,6 +348,46 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Premium section */}
+      <section className="py-12 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-2 mb-2">
+            <Star size={20} className="text-[#FFD700]" fill="#FFD700" />
+            <h2 className="text-xl sm:text-2xl font-extrabold text-[#2C3E50]">Contenu Premium</h2>
+          </div>
+          <p className="text-gray-500 text-sm mb-7">
+            {isPremium ? 'Vous avez accès à tout le contenu ci-dessous.' : '3 éléments gratuits par catégorie · Premium débloque tout'}
+          </p>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+            {PREMIUM_CONTENT.map((item) => (
+              <div
+                key={item.id}
+                className="relative bg-white border border-gray-100 rounded-2xl p-4 shadow-sm cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all"
+                onClick={() => navigate('/cultures-premium')}
+              >
+                <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-3" style={{ backgroundColor: `${item.color}18` }}>
+                  {isPremium ? (
+                    <span style={{ color: item.color }}>
+                      {item.icon === 'utensils' ? '🍽️' : item.icon === 'book-open' ? '📖' : item.icon === 'message-circle' ? '💬' : item.icon === 'scroll' ? '📜' : item.icon === 'volume-2' ? '🔊' : item.icon === 'video' ? '🎬' : item.icon === 'languages' ? '🌐' : item.icon === 'heart' ? '❤️' : '📚'}
+                    </span>
+                  ) : (
+                    <Lock size={18} style={{ color: item.color }} />
+                  )}
+                </div>
+                <h3 className="font-bold text-[#2C3E50] text-xs mb-1 leading-tight">{item.title}</h3>
+                <p className="text-[10px] text-gray-400 line-clamp-2">{item.freeItems.length} sur {item.items.length} gratuit</p>
+                {!isPremium && (
+                  <div className="absolute top-2 right-2 w-4 h-4 bg-[#8B0000] rounded-full flex items-center justify-center">
+                    <Lock size={8} className="text-white" />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Inventions */}
       <section className="py-12 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -321,45 +433,10 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Premium section */}
-      <section className="py-12 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-2 mb-2">
-            <Star size={20} className="text-[#FFD700]" fill="#FFD700" />
-            <h2 className="text-xl sm:text-2xl font-extrabold text-[#2C3E50]">Contenu Premium</h2>
-          </div>
-          <p className="text-gray-500 text-sm mb-7">
-            {isPremium ? 'Vous avez accès à tout le contenu ci-dessous.' : '3 éléments gratuits par catégorie · Premium débloque tout'}
-          </p>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-            {PREMIUM_CONTENT.map((item) => (
-              <div
-                key={item.id}
-                className="relative bg-white border border-gray-100 rounded-2xl p-4 shadow-sm cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all"
-                onClick={() => navigate('/cultures-premium')}
-              >
-                <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-3" style={{ backgroundColor: `${item.color}18` }}>
-                  {isPremium ? (
-                    <span style={{ color: item.color }}>
-                      {item.icon === 'utensils' ? '🍽️' : item.icon === 'book-open' ? '📖' : item.icon === 'message-circle' ? '💬' : item.icon === 'scroll' ? '📜' : item.icon === 'volume-2' ? '🔊' : '🎬'}
-                    </span>
-                  ) : (
-                    <Lock size={18} style={{ color: item.color }} />
-                  )}
-                </div>
-                <h3 className="font-bold text-[#2C3E50] text-xs mb-1 leading-tight">{item.title}</h3>
-                <p className="text-[10px] text-gray-400 line-clamp-2">{item.freeItems.length} sur {item.items.length} gratuit</p>
-                {!isPremium && (
-                  <div className="absolute top-2 right-2 w-4 h-4 bg-[#8B0000] rounded-full flex items-center justify-center">
-                    <Lock size={8} className="text-white" />
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {!isPremium ? (
+      {/* Premium Upgrade CTA */}
+      {!isPremium ? (
+        <section className="py-12 bg-white">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="bg-white border-2 border-[#FFD700] rounded-2xl p-7 shadow-xl max-w-2xl mx-auto text-center">
               <div className="flex items-center justify-center gap-3 mb-5">
                 <Crown size={36} className="text-[#FFD700]" fill="#FFD700" />
@@ -390,18 +467,20 @@ export default function HomePage() {
                 🔒 Paiement sécurisé · MTN & Orange Money
               </p>
             </div>
-          ) : (
-            <div className="bg-gradient-to-br from-[#8B0000] to-[#6B0000] rounded-2xl p-7 text-center max-w-2xl mx-auto">
-              <Crown size={44} className="text-[#FFD700] mx-auto mb-3" fill="#FFD700" />
-              <h3 className="text-2xl font-extrabold text-[#FFD700] mb-2">Vous êtes Premium !</h3>
-              <p className="text-white/80 mb-5 text-sm">Profitez de l'accès complet à toutes les ressources culturelles</p>
-              <Button onClick={() => navigate('/cultures-premium')} className="bg-[#27AE60] hover:bg-[#219A52] text-white font-bold px-8 rounded-2xl h-12 flex items-center gap-2 mx-auto">
-                Explorer le contenu complet <ArrowRight size={16} />
-              </Button>
-            </div>
-          )}
-        </div>
-      </section>
+          </div>
+        </section>
+      ) : (
+        <section className="py-12 bg-gradient-to-br from-[#8B0000] to-[#6B0000]">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <Crown size={44} className="text-[#FFD700] mx-auto mb-3" fill="#FFD700" />
+            <h3 className="text-2xl font-extrabold text-[#FFD700] mb-2">Vous êtes Premium !</h3>
+            <p className="text-white/80 mb-5 text-sm">Profitez de l'accès complet à toutes les ressources culturelles</p>
+            <Button onClick={() => navigate('/cultures-premium')} className="bg-[#27AE60] hover:bg-[#219A52] text-white font-bold px-8 rounded-2xl h-12 flex items-center gap-2 mx-auto">
+              Explorer le contenu complet <ArrowRight size={16} />
+            </Button>
+          </div>
+        </section>
+      )}
 
       <CultureDetailModal
         culture={selectedCulture}

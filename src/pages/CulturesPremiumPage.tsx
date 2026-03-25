@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import {
   Crown, Lock, MapPin, Diamond, ArrowRight, Loader2, BookOpen,
   AlertCircle, RefreshCw,
@@ -17,6 +18,7 @@ interface Village {
   name: string;
   region: string;
   image_url: string | null;
+  description: string | null;
   created_at: string;
 }
 
@@ -25,33 +27,49 @@ export default function CulturesPremiumPage() {
   const isPremium = profile?.is_premium ?? false;
   const navigate = useNavigate();
 
-  const [villages, setVillages] = useState<Village[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [showPayment, setShowPayment] = useState(false);
 
-  useEffect(() => {
-    fetchVillages();
-  }, []);
-
-  const fetchVillages = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const { data, error: err } = await supabase
+  // Fetch villages using React Query (from backend API with Redis cache)
+  const { data: villages = [], isLoading, error, refetch } = useQuery({
+    queryKey: ['villages'],
+    queryFn: async () => {
+      // Use localhost in dev, production API in prod
+      // But prioritize VITE_API_URL if set (for testing with hosted backend)
+      const isDev = import.meta.env.DEV;
+      const API_BASE = import.meta.env.VITE_API_URL 
+        ? import.meta.env.VITE_API_URL
+        : (isDev ? 'http://localhost:3000' : 'https://api.lecontinent.cm');
+      
+      // Try backend API first
+      try {
+        const response = await fetch(`${API_BASE}/api/content/villages`);
+        if (response.ok) {
+          const data = await response.json();
+          return data as Village[];
+        }
+      } catch {
+        // Fall through to Supabase fallback
+      }
+      
+      // Fallback to Supabase
+      const { data, error } = await supabase
         .from('villages')
         .select('*')
         .order('name', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as Village[];
+    },
+    staleTime: 10 * 60 * 1000, // 10 minutes - villages don't change often
+    refetchInterval: false, // Disable auto-refresh
+    refetchOnMount: true, // Fetch on mount
+    refetchOnWindowFocus: false, // Disable refetch on window focus
+    retry: 1, // Only retry once
+    retryDelay: 500,
+  });
 
-      if (err) throw err;
-      setVillages(data || []);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erreur de chargement';
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // No manual retry loop needed — TanStack Query handles retries automatically.
+
+  const errorMessage = error instanceof Error ? error.message : null;
 
   const handleVillageClick = (village: Village) => {
     navigate(`/village-options?village=${encodeURIComponent(JSON.stringify(village))}`);
@@ -106,7 +124,7 @@ export default function CulturesPremiumPage() {
         )}
 
         {/* Loading */}
-        {loading && (
+        {isLoading && (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
             <Loader2 size={36} className="text-[#8B0000] animate-spin" />
             <p className="text-gray-500">Chargement des cultures...</p>
@@ -114,18 +132,18 @@ export default function CulturesPremiumPage() {
         )}
 
         {/* Error */}
-        {!loading && error && (
+        {!isLoading && error && (
           <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
             <AlertCircle size={48} className="text-red-500" />
-            <p className="text-gray-600">{error}</p>
-            <Button onClick={fetchVillages} variant="outline" className="flex items-center gap-2">
+            <p className="text-gray-600">{errorMessage || 'Erreur de chargement'}</p>
+            <Button onClick={() => refetch()} variant="outline" className="flex items-center gap-2">
               <RefreshCw size={16} /> Réessayer
             </Button>
           </div>
         )}
 
         {/* Villages list */}
-        {!loading && !error && (
+        {!isLoading && !error && (
           <>
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-xl font-extrabold text-[#2C3E50]">
@@ -154,7 +172,12 @@ export default function CulturesPremiumPage() {
 
                     {/* Info */}
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-[#2C3E50] text-base truncate">{village.name}</p>
+                      <p className="font-bold text-[#2C3E50] text-sm truncate" title={village.name}>{village.name.split(' (')[0]?.charAt(0).toUpperCase() + village.name.split(' (')[0]?.slice(1)}</p>
+                      {village.name.includes(' (') && (
+                        <p className="font-bold text-xs text-gray-500 italic truncate" title={village.name}>
+                          {village.name.match(/\((.*)\)/)?.[1]}
+                        </p>
+                      )}
                       <p className="text-sm text-gray-500 flex items-center gap-1 mt-0.5">
                         <MapPin size={11} className="text-[#8B0000]" /> {village.region || 'Cameroun'}
                       </p>
@@ -193,6 +216,24 @@ export default function CulturesPremiumPage() {
                 <div className="flex-1">
                   <p className="font-bold text-[#2C3E50]">📚 Bibliothèque & Ressources</p>
                   <p className="text-sm text-gray-500">Documents, archives et ressources historiques</p>
+                </div>
+                <ArrowRight size={16} className="text-gray-400 shrink-0" />
+              </div>
+            </div>
+
+            {/* Médecine Traditionnelle */}
+            <div className="mb-8">
+              <h3 className="text-base font-extrabold text-[#2C3E50] uppercase tracking-wide mb-3">Médecine Traditionnelle</h3>
+              <div
+                className="flex items-center gap-4 bg-white rounded-2xl p-4 shadow-sm border border-gray-100 hover:shadow-md cursor-pointer hover:-translate-y-0.5 transition-all"
+                onClick={() => navigate('/medecine-traditionnelle')}
+              >
+                <div className="w-16 h-16 rounded-xl bg-[#E74C3C]/10 flex items-center justify-center shrink-0">
+                  <span className="text-2xl">🌿</span>
+                </div>
+                <div className="flex-1">
+                  <p className="font-bold text-[#2C3E50]">🌿 Médecine Traditionnelle</p>
+                  <p className="text-sm text-gray-500">Plantes medicinales et soins traditionnels Camerounais</p>
                 </div>
                 <ArrowRight size={16} className="text-gray-400 shrink-0" />
               </div>

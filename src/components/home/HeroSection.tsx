@@ -61,7 +61,7 @@ export default function HeroSection() {
                   <Star size={16} fill="currentColor" /> Compte Premium Actif
                 </div>
               )}
-              <Link to="/cultures">
+              <Link to="/cultures-premium">
                 <Button size="lg" className="bg-[#8B0000] text-white hover:bg-[#6B0000] font-bold px-8 rounded-full flex items-center gap-2">
                   Explorer les Cultures <ArrowRight size={18} />
                 </Button>
@@ -74,9 +74,9 @@ export default function HeroSection() {
                   Rejoindre la Communauté
                 </Button>
               </Link>
-              <Link to="/login">
+              <Link to="/cultures-premium">
                 <Button size="lg" className="bg-white text-[#8B0000] hover:bg-gray-100 px-8 rounded-full font-bold">
-                  Se Connecter
+                  Explorer les Cultures Premium
                 </Button>
               </Link>
             </>

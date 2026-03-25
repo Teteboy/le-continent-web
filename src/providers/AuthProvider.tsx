@@ -1,6 +1,8 @@
 import { useEffect, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
+import { setupDataSync, cleanupDataSync } from '../services/dataSync';
 
 /**
  * AuthProvider initializes auth state ONCE for the entire app.
@@ -15,10 +17,21 @@ import { useAuthStore } from '../store/authStore';
  *    "Lock broken by another request with the 'steal' option." errors.
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { setUser, setSession, setProfile, setLoading, reset } = useAuthStore();
+  const { setUser, setSession, setProfile, setLoading } = useAuthStore();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     let cancelled = false;
+
+    // Initialize real-time data sync
+    setupDataSync(queryClient);
+
+    // Safety timeout - set loading to false after 5 seconds max
+    const timeoutId = setTimeout(() => {
+      if (!cancelled) {
+        setLoading(false);
+      }
+    }, 5000);
 
     const fetchProfile = async (userId: string) => {
       try {
@@ -27,30 +40,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .select('*')
           .eq('id', userId)
           .single();
-        if (cancelled) return;
+        if (cancelled) {
+          if (data) setProfile(data);
+          return;
+        }
         if (!error && data) {
           setProfile(data);
+        } else if (error) {
+          if (data) setProfile(data);
         }
-      } catch (err) {
-        console.error('Error fetching profile:', err);
+      } catch {
+        // Silent fail - profile will be fetched on next attempt
       } finally {
         if (!cancelled) {
+          clearTimeout(timeoutId);
           setLoading(false);
         }
       }
     };
 
-    // onAuthStateChange fires INITIAL_SESSION on subscribe in Supabase v2,
-    // so no separate getSession() call is needed (which caused concurrent
-    // lock acquisitions and "Lock broken" errors).
+    // Track last user ID to detect token refresh
+    let lastUserId: string | null = null;
+    
+    // onAuthStateChange fires INITIAL_SESSION on subscribe in Supabase v2
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (event, session) => {
         if (cancelled) return;
+        
         setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          await fetchProfile(session.user.id);
-        } else {
+        const currentUser = session?.user ?? null;
+        
+        // If user was previously logged in and now is null (but not SIGNED_OUT),
+        // this is likely a token refresh - don't clear profile
+        const isSignOut = event === 'SIGNED_OUT';
+        
+        if (!currentUser && lastUserId && !isSignOut) {
+          setUser(null);
+          return;
+        }
+        
+        // Update last user ID
+        lastUserId = currentUser?.id ?? null;
+        setUser(currentUser);
+        
+        if (currentUser) {
+          await fetchProfile(currentUser.id);
+        } else if (isSignOut) {
+          clearTimeout(timeoutId);
           setProfile(null);
           setLoading(false);
         }
@@ -59,7 +95,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       cancelled = true;
+      clearTimeout(timeoutId);
       subscription.unsubscribe();
+      cleanupDataSync();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

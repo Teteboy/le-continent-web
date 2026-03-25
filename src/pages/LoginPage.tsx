@@ -6,6 +6,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/store/authStore';
+
+// API base URL - use environment variable or production API
+const API_BASE = import.meta.env.VITE_API_URL 
+  ? import.meta.env.VITE_API_URL
+  : (import.meta.env.DEV ? 'http://localhost:3000' : 'https://api.lecontinent.cm');
 
 /** Derive the internal login email if user registered with phone only */
 function deriveLoginEmail(input: string): string {
@@ -20,8 +26,39 @@ export default function LoginPage() {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const { setUser, setSession, setProfile } = useAuthStore();
+
+  const fetchProfileFromCache = async (userId: string) => {
+    try {
+      // Try to fetch from Redis-cached backend endpoint first
+      const response = await fetch(`${API_BASE}/api/auth/profile/${userId}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.profile) {
+          setProfile(result.profile);
+          return;
+        }
+      }
+    } catch {
+      // Fall through to Supabase fallback
+    }
+    
+    // Fallback to direct Supabase query
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+    if (data) {
+      setProfile(data);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,15 +72,84 @@ export default function LoginPage() {
       return;
     }
 
-    setLoading(true);
+    setIsLoading(true);
     try {
       const email = deriveLoginEmail(identifier);
-      const { error: authError } = await supabase.auth.signInWithPassword({
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
       if (authError) throw authError;
+      
+      // Immediately set session and user in store for instant reactivity
+      if (authData.session) {
+        setSession(authData.session);
+        setUser(authData.user);
+        
+        // Fetch profile from Redis cache for faster loading
+        if (authData.user) {
+          await fetchProfileFromCache(authData.user.id);
+          // Also fetch directly from Supabase as backup to ensure profile is set
+          try {
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', authData.user.id)
+              .single();
+            if (profileData) {
+              setProfile(profileData);
+            } else {
+              // Create a minimal profile if none exists
+              const minimalProfile = {
+                id: authData.user.id,
+                first_name: '',
+                last_name: '',
+                email: authData.user.email || '',
+                phone: authData.user.phone || '',
+                is_premium: false,
+                avatar_url: null,
+                tribe: null,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                last_payment_date: null,
+                payment_reference: null,
+                promo_code: null,
+                referred_by: null,
+                referral_earnings: 0,
+                referral_count: 0,
+                is_admin: false
+              };
+              setProfile(minimalProfile);
+            }
+          } catch {
+            // Create a minimal profile as last resort
+            const minimalProfile = {
+              id: authData.user.id,
+              first_name: '',
+              last_name: '',
+              email: authData.user.email || '',
+              phone: authData.user.phone || '',
+              is_premium: false,
+              avatar_url: null,
+              tribe: null,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              last_payment_date: null,
+              payment_reference: null,
+              promo_code: null,
+              referred_by: null,
+              referral_earnings: 0,
+              referral_count: 0,
+              is_admin: false
+            };
+            setProfile(minimalProfile);
+          }
+        }
+      }
+      
       toast.success('Connexion réussie ! Bienvenue 👋');
+      
+      // Navigate immediately - profile is already set in store above
       navigate('/cultures');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erreur de connexion.';
@@ -59,7 +165,7 @@ export default function LoginPage() {
         toast.error('Erreur de connexion.', { description: msg });
       }
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
@@ -96,7 +202,7 @@ export default function LoginPage() {
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 className="mt-1.5 border-[#8B0000]/40 bg-white focus-visible:ring-[#8B0000] h-12"
-                disabled={loading}
+                disabled={isLoading}
                 autoComplete="username"
               />
               <p className="text-xs text-gray-400 mt-1">
@@ -113,7 +219,7 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="border-[#8B0000]/40 bg-white focus-visible:ring-[#8B0000] h-12 pr-10"
-                  disabled={loading}
+                  disabled={isLoading}
                   autoComplete="current-password"
                 />
                 <button
@@ -128,10 +234,10 @@ export default function LoginPage() {
 
             <Button
               type="submit"
-              disabled={loading}
+              disabled={isLoading}
               className="w-full bg-[#FF8C00] hover:bg-[#E07B00] text-white font-bold h-12 rounded-xl flex items-center gap-2 justify-center text-base"
             >
-              {loading ? (
+              {isLoading ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   Connexion...
@@ -143,6 +249,12 @@ export default function LoginPage() {
               )}
             </Button>
           </form>
+
+          <div className="mt-4 text-center">
+            <Link to="/forgot-password" className="text-sm text-[#8B0000] hover:text-[#A52A2A] font-semibold">
+              Mot de passe oublié ?
+            </Link>
+          </div>
 
           <div className="mt-6 pt-5 border-t border-gray-200 text-center">
             <p className="text-[#4B0082] text-sm mb-3">Pas encore de compte ?</p>

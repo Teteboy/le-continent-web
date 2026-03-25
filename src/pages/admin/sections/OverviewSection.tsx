@@ -28,11 +28,18 @@ export default function OverviewSection() {
   const { data: stats, isLoading: statsLoading, error: statsError, refetch } = useQuery<AdminStats>({
     queryKey: ['admin-stats'],
     queryFn: async () => {
-      const [usersRes, premiumRes, referralsRes, promoRes] = await Promise.all([
+      const [
+        usersRes,
+        premiumRes,
+        referralsRes,
+        promoRes,
+        villagesRes
+      ] = await Promise.all([
         supabase.from('profiles').select('id', { count: 'exact', head: true }),
         supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('is_premium', true),
         supabase.from('referrals').select('id', { count: 'exact', head: true }),
         supabase.from('promo_codes').select('id', { count: 'exact', head: true }).eq('is_active', true),
+        supabase.from('villages').select('id', { count: 'exact', head: true })
       ]);
       const totalUsers = usersRes.count ?? 0;
       const premiumUsers = premiumRes.count ?? 0;
@@ -42,6 +49,7 @@ export default function OverviewSection() {
         freeUsers: totalUsers - premiumUsers,
         totalReferrals: referralsRes.count ?? 0,
         activePromoCodes: promoRes.count ?? 0,
+        totalVillages: villagesRes.count ?? 0,
         estimatedRevenue: premiumUsers * 1000,
       };
     },
@@ -51,6 +59,7 @@ export default function OverviewSection() {
   const { data: recentUsers = [], isLoading: usersLoading } = useQuery<UserProfile[]>({
     queryKey: ['admin-recent-users'],
     queryFn: async () => {
+      // Use Supabase directly for admin - no need for API caching
       const { data, error } = await supabase
         .from('profiles')
         .select('id, first_name, last_name, email, phone, is_premium, created_at, referral_count, promo_code')

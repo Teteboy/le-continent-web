@@ -36,9 +36,9 @@ export const INVENTIONS: Invention[] = [
 ];
 
 export const TRADITIONAL_JOBS: TraditionalJob[] = [
-  { id: '1', name: 'Forgeron Bamiléké', description: "Maîtrise du fer et création d'outils agricoles", region: 'Ouest' },
-  { id: '2', name: 'Pêcheur Sawa', description: 'Techniques de pêche traditionnelles en pirogue', region: 'Littoral' },
-  { id: '3', name: 'Potière Bamoun', description: 'Art de la poterie avec des motifs traditionnels', region: 'Ouest' },
+  { id: '1', name: 'Forgeron fe‘efe', description: "Maîtrise du fer et création d'outils agricoles", region: 'Ouest' },
+  { id: '2', name: 'Pêcheur duálá', description: 'Techniques de pêche traditionnelles en pirogue', region: 'Littoral' },
+  { id: '3', name: 'Potière shü pámə̀m', description: 'Art de la poterie avec des motifs traditionnels', region: 'Ouest' },
   { id: '4', name: 'Tisseur de raphia', description: 'Tissage du raphia pour vêtements et décorations', region: 'Centre' },
 ];
 
@@ -58,8 +58,8 @@ export const PREMIUM_CONTENT: PremiumContent[] = [
     description: 'Apprenez à lire et écrire les langues camerounaises',
     icon: 'book-open',
     color: '#2980B9',
-    items: ['Bassa', 'Bamoun', 'Ewondo', 'Fulfuldé', 'Duala'],
-    freeItems: ['Bassa', 'Bamoun', 'Ewondo'],
+    items: ['bàsàa', 'shü pámə̀m', 'ewondo', 'fulfulde', 'duálá'],
+    freeItems: ['bàsàa', 'shü pámə̀m', 'ewondo'],
   },
   {
     id: '3',
@@ -103,7 +103,16 @@ export const PREMIUM_CONTENT: PremiumContent[] = [
     description: 'Traduire toutes les langues maternelles',
     icon: 'languages',
     color: '#16A085',
-    items: ['Français-Anglais', 'Français-Bassa', 'Français-Bamoun', 'Français-Ewondo', 'Français-Fulfuldé'],
-    freeItems: ['Français-Anglais', 'Français-Bassa', 'Français-Bamoun'],
+    items: ['Français-Anglais', 'Français-bàsàa', 'Français-shü pámə̀m', 'Français-ewondo', 'Français-fulfulde'],
+    freeItems: ['Français-Anglais', 'Français-bàsàa', 'Français-shü pámə̀m'],
+  },
+  {
+    id: '8',
+    title: 'Médecine Traditionnelle',
+    description: 'Plantes medicinales et soins traditionnels',
+    icon: 'heart',
+    color: '#E74C3C',
+    items: ['Plantes medicinales', 'Soins traditionnels', 'Rituels de guérison', 'Herboristerie', 'Tisanes et decoctions'],
+    freeItems: ['Plantes medicinales', 'Soins traditionnels', 'Rituels de guérison'],
   },
 ];

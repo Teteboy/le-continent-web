@@ -45,7 +45,7 @@ export default function ProfilePage() {
   const { data: referrals = [], isLoading: referralsLoading } = useReferrals(user?.id);
 
   const totalEarnings = profile?.referral_earnings ?? 0;
-  const totalReferrals = profile?.referral_count ?? referrals.length;
+  const totalReferrals = referrals.length;
 
   // Generate promo code if user doesn't have one
   const handleGeneratePromoCode = async () => {
@@ -83,11 +83,13 @@ export default function ProfilePage() {
 
   const handleSharePromo = async () => {
     if (!profile?.promo_code) return;
+    // Include referral code as URL parameter for auto-fill on signup page
+    const referralUrl = `https://lecontinent.cm/inscription?code=${profile.promo_code}`;
     const shareText = `🎉 Rejoins *Le Continent* – La plateforme culturelle du Cameroun !
 
 Utilise mon code promo *${profile.promo_code}* pour bénéficier d'une réduction sur l'abonnement Premium à seulement 1 000FCFA.
 
-👉 https://lecontinent.cm/inscription`;
+👉 ${referralUrl}`;
     if (navigator.share) {
       try {
         await navigator.share({ title: 'Le Continent – Mon code promo', text: shareText });
@@ -134,15 +136,16 @@ Utilise mon code promo *${profile.promo_code}* pour bénéficier d'une réductio
     }
   };
 
-  const infoRows = [
-    { icon: <User size={18} className="text-[#8B0000]" />, label: 'Nom complet', value: profile ? `${profile.first_name} ${profile.last_name}` : '—' },
-    { icon: <Mail size={18} className="text-[#8B0000]" />, label: 'Email', value: profile?.email || user?.email || 'Non renseigné' },
-    { icon: <Phone size={18} className="text-[#8B0000]" />, label: 'Téléphone', value: profile?.phone || 'Non renseigné' },
-    { icon: <Users size={18} className="text-[#8B0000]" />, label: 'Ethnie / Tribu', value: profile?.tribe || 'Non renseigné' },
-    { icon: <Trophy size={18} className="text-[#8B0000]" />, label: 'Statut', value: profile?.is_premium ? 'Premium' : 'Gratuit', premium: true },
-    ...(profile?.last_payment_date ? [{ icon: <Calendar size={18} className="text-[#8B0000]" />, label: 'Premium depuis', value: new Date(profile.last_payment_date).toLocaleDateString('fr-FR') }] : []),
-    ...(profile?.created_at ? [{ icon: <Calendar size={18} className="text-[#8B0000]" />, label: 'Membre depuis', value: new Date(profile.created_at).toLocaleDateString('fr-FR') }] : []),
-  ];
+   const infoRows = [
+     { icon: <User size={18} className="text-[#8B0000]" />, label: 'Nom complet', value: profile ? `${profile.first_name} ${profile.last_name}` : '—' },
+     { icon: <Mail size={18} className="text-[#8B0000]" />, label: 'Email', value: profile?.email || user?.email || 'Non renseigné' },
+     { icon: <Phone size={18} className="text-[#8B0000]" />, label: 'Téléphone', value: profile?.phone || 'Non renseigné' },
+     { icon: <Users size={18} className="text-[#8B0000]" />, label: 'Ethnie / Tribu', value: profile?.tribe || 'Non renseigné' },
+     { icon: <Gift size={18} className="text-[#8B0000]" />, label: 'Code promo personnel', value: '(voir section Parrainages)' },
+     { icon: <Trophy size={18} className="text-[#8B0000]" />, label: 'Statut', value: profile?.is_premium ? 'Premium' : 'Gratuit', premium: true },
+     ...(profile?.last_payment_date ? [{ icon: <Calendar size={18} className="text-[#8B0000]" />, label: 'Premium depuis', value: new Date(profile.last_payment_date).toLocaleDateString('fr-FR') }] : []),
+     ...(profile?.created_at ? [{ icon: <Calendar size={18} className="text-[#8B0000]" />, label: 'Membre depuis', value: new Date(profile.created_at).toLocaleDateString('fr-FR') }] : []),
+   ];
 
   return (
     <div className="min-h-screen bg-[#FFF8DC] pt-20 pb-12">

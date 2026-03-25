@@ -1,37 +1,46 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { queryConfig } from '@/lib/query-config';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import { Toaster } from '@/components/ui/sonner';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
-import LandingPage from '@/pages/LandingPage';
-import LoginPage from '@/pages/LoginPage';
-import SignupPage from '@/pages/SignupPage';
-import HomePage from '@/pages/HomePage';
-import CulturesPremiumPage from '@/pages/CulturesPremiumPage';
-import VillageOptionsPage from '@/pages/VillageOptionsPage';
-import BibliothequePage from '@/pages/BibliothequePage';
-import ProverbesPage from '@/pages/village/ProverbesPage';
-import LexiquePage from '@/pages/village/LexiquePage';
-import HistoirePage from '@/pages/village/HistoirePage';
-import MetsPage from '@/pages/village/MetsPage';
-import AlphabetPage from '@/pages/village/AlphabetPage';
-import PhrasesPage from '@/pages/village/PhrasesPage';
-import ProfilePage from '@/pages/ProfilePage';
-import AboutPage from '@/pages/AboutPage';
-import ContactPage from '@/pages/ContactPage';
-import PrivacyPage from '@/pages/PrivacyPage';
-import TermsPage from '@/pages/TermsPage';
-import CheckoutPage from '@/pages/CheckoutPage';
-import PaymentSuccessPage from '@/pages/PaymentSuccessPage';
-import PaymentCancelPage from '@/pages/PaymentCancelPage';
-import AdminDashboard from '@/pages/admin/AdminDashboard';
 import { useAuth } from '@/hooks/useAuth';
 import { AuthProvider } from '@/providers/AuthProvider';
-import { type ReactNode, useEffect } from 'react';
+import { type ReactNode, useEffect, lazy, Suspense } from 'react';
+
+// Lazy-load all pages for better initial load performance
+const LandingPage = lazy(() => import('@/pages/LandingPage'));
+const LoginPage = lazy(() => import('@/pages/LoginPage'));
+const SignupPage = lazy(() => import('@/pages/SignupPage'));
+const HomePage = lazy(() => import('@/pages/HomePage'));
+const CulturesPremiumPage = lazy(() => import('@/pages/CulturesPremiumPage'));
+const VillageOptionsPage = lazy(() => import('@/pages/VillageOptionsPage'));
+const BibliothequePage = lazy(() => import('@/pages/BibliothequePage'));
+const MedecineTraditionnellePage = lazy(() => import('@/pages/MedecineTraditionnellePage'));
+const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage'));
+const UpdatePasswordPage = lazy(() => import('@/pages/UpdatePasswordPage'));
+const ProverbesPage = lazy(() => import('@/pages/village/ProverbesPage'));
+const LexiquePage = lazy(() => import('@/pages/village/LexiquePage'));
+const HistoirePage = lazy(() => import('@/pages/village/HistoirePage'));
+const HistoireDetailPage = lazy(() => import('@/pages/village/HistoireDetailPage'));
+const MetsPage = lazy(() => import('@/pages/village/MetsPage'));
+const MetsDetailPage = lazy(() => import('@/pages/village/MetsDetailPage'));
+const AlphabetPage = lazy(() => import('@/pages/village/AlphabetPage'));
+const PhrasesPage = lazy(() => import('@/pages/village/PhrasesPage'));
+const ProfilePage = lazy(() => import('@/pages/ProfilePage'));
+const AboutPage = lazy(() => import('@/pages/AboutPage'));
+const ContactPage = lazy(() => import('@/pages/ContactPage'));
+const PrivacyPage = lazy(() => import('@/pages/PrivacyPage'));
+const TermsPage = lazy(() => import('@/pages/TermsPage'));
+const CheckoutPage = lazy(() => import('@/pages/CheckoutPage'));
+const PaymentSuccessPage = lazy(() => import('@/pages/PaymentSuccessPage'));
+const PaymentCancelPage = lazy(() => import('@/pages/PaymentCancelPage'));
+const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard'));
 import { Loader2 } from 'lucide-react';
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, staleTime: 60_000 } },
+  defaultOptions: queryConfig,
 });
 
 function LoadingScreen() {
@@ -83,6 +92,7 @@ function AppRoutes() {
   return (
     <>
       <ScrollToTop />
+      <Suspense fallback={<LoadingScreen />}>
       <Routes>
       {/* Public routes */}
       <Route path="/" element={<Layout hideFooter><LandingPage /></Layout>} />
@@ -90,10 +100,15 @@ function AppRoutes() {
       <Route path="/cultures-premium" element={<Layout><CulturesPremiumPage /></Layout>} />
       <Route path="/village-options" element={<Layout><VillageOptionsPage /></Layout>} />
       <Route path="/bibliotheque" element={<Layout><BibliothequePage /></Layout>} />
+      <Route path="/medecine-traditionnelle" element={<Layout><MedecineTraditionnellePage /></Layout>} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/update-password" element={<UpdatePasswordPage />} />
       <Route path="/village/proverbes" element={<Layout><ProverbesPage /></Layout>} />
       <Route path="/village/lexique" element={<Layout><LexiquePage /></Layout>} />
       <Route path="/village/histoire" element={<Layout><HistoirePage /></Layout>} />
+      <Route path="/village/histoire/:id" element={<Layout><HistoireDetailPage /></Layout>} />
       <Route path="/village/mets" element={<Layout><MetsPage /></Layout>} />
+        <Route path="/village/mets/:id" element={<MetsDetailPage />} />
       <Route path="/village/alphabet" element={<Layout><AlphabetPage /></Layout>} />
       <Route path="/village/phrases" element={<Layout><PhrasesPage /></Layout>} />
       <Route path="/about" element={<Layout><AboutPage /></Layout>} />
@@ -124,19 +139,22 @@ function AppRoutes() {
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </Suspense>
     </>
   );
 }
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AuthProvider>
-          <AppRoutes />
-          <Toaster richColors position="top-right" />
-        </AuthProvider>
-      </BrowserRouter>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <AuthProvider>
+            <AppRoutes />
+            <Toaster richColors position="top-right" />
+          </AuthProvider>
+        </BrowserRouter>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
