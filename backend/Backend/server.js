@@ -803,7 +803,8 @@ app.post('/api/payment/initiate', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[CamPay] Payment initiation error:', error);
+        console.error('[CamPay] Payment initiation error:', error.message || error);
+        console.error('[CamPay] Full error details:', JSON.stringify({ name: error.name, code: error.code, cause: error.cause, stack: error.stack?.split('\n').slice(0, 3) }));
 
         const errorMessage = getErrorMessage(error.message);
 

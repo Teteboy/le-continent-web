@@ -1,10 +1,10 @@
 // CamPay Payment Integration for Le Continent
 // CommonJS version for Node.js backend
-// Docs: https://demo.campay.net (demo) / https://api.campay.net (live)
+// Docs: https://demo.campay.net (demo) / https://www.campay.net (live)
 
 // Configuration - loaded from environment variables
-// In demo mode, use demo.campay.net; in live mode, use api.campay.net
-const CAMPAY_BASE_URL = process.env.CAMPAY_BASE_URL || 'https://demo.campay.net';
+// In demo mode, use demo.campay.net; in live mode, use www.campay.net
+const CAMPAY_BASE_URL = process.env.CAMPAY_BASE_URL || 'https://www.campay.net';
 const CAMPAY_USERNAME = process.env.CAMPAY_USERNAME || '';
 const CAMPAY_PASSWORD = process.env.CAMPAY_PASSWORD || '';
 const CAMPAY_PERMANENT_TOKEN = process.env.CAMPAY_PERMANENT_TOKEN || '';
