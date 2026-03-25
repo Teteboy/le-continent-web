@@ -8,6 +8,7 @@ import Footer from '@/components/layout/Footer';
 import { useAuth } from '@/hooks/useAuth';
 import { AuthProvider } from '@/providers/AuthProvider';
 import { type ReactNode, useEffect, lazy, Suspense } from 'react';
+import { Loader2 } from 'lucide-react';
 
 // Lazy-load all pages for better initial load performance
 const LandingPage = lazy(() => import('@/pages/LandingPage'));
@@ -37,12 +38,25 @@ const CheckoutPage = lazy(() => import('@/pages/CheckoutPage'));
 const PaymentSuccessPage = lazy(() => import('@/pages/PaymentSuccessPage'));
 const PaymentCancelPage = lazy(() => import('@/pages/PaymentCancelPage'));
 const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard'));
-import { Loader2 } from 'lucide-react';
+
+// Preload high-traffic pages after initial render so navigation feels instant
+function preloadCorePages() {
+  // Use requestIdleCallback (or setTimeout fallback) to avoid blocking main thread
+  const schedule = typeof requestIdleCallback === 'function' ? requestIdleCallback : (fn: () => void) => setTimeout(fn, 200);
+  schedule(() => {
+    import('@/pages/HomePage');
+    import('@/pages/CulturesPremiumPage');
+    import('@/pages/VillageOptionsPage');
+    import('@/pages/LandingPage');
+    import('@/pages/ProfilePage');
+  });
+}
 
 const queryClient = new QueryClient({
   defaultOptions: queryConfig,
 });
 
+/** Full-screen loader — used only for auth guards (ProtectedRoute / GuestRoute). */
 function LoadingScreen() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#FFF8DC]">
@@ -50,6 +64,15 @@ function LoadingScreen() {
         <img src="/logo_app.jpg" alt="Le Continent" className="w-20 h-20 rounded-full object-cover border-4 border-[#8B0000] mx-auto mb-4 animate-pulse" />
         <Loader2 className="text-[#8B0000] w-6 h-6 animate-spin mx-auto" />
       </div>
+    </div>
+  );
+}
+
+/** Lightweight inline spinner — used as Suspense fallback so route changes don't flash a full-page loader. */
+function RouteSpinner() {
+  return (
+    <div className="flex items-center justify-center py-32">
+      <Loader2 className="text-[#8B0000] w-8 h-8 animate-spin" />
     </div>
   );
 }
@@ -89,10 +112,15 @@ function ScrollToTop() {
 }
 
 function AppRoutes() {
+  // Preload core pages once after first render
+  useEffect(() => {
+    preloadCorePages();
+  }, []);
+
   return (
     <>
       <ScrollToTop />
-      <Suspense fallback={<LoadingScreen />}>
+      <Suspense fallback={<RouteSpinner />}>
       <Routes>
       {/* Public routes */}
       <Route path="/" element={<Layout hideFooter><LandingPage /></Layout>} />

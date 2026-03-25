@@ -20,7 +20,7 @@ interface Phrase {
 export default function PhrasesPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const isPremium = profile?.is_premium ?? false;
   const { playingId, playSound } = useAudioPlayer();
   const [showPayment, setShowPayment] = useState(false);
@@ -40,9 +40,10 @@ export default function PhrasesPage() {
     currentPage,
     orderBy: 'created_at',
     orderAscending: true,
+    authLoading,
   });
 
-  const items = data?.items ?? [];
+  const items: Phrase[] = data?.items ?? [];
   const total = data?.total ?? 0;
   const totalPages = data?.totalPages ?? 0;
   const lockedCount = data?.lockedCount ?? 0;

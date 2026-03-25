@@ -40,14 +40,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .select('*')
           .eq('id', userId)
           .single();
-        if (cancelled) {
-          if (data) setProfile(data);
-          return;
-        }
-        if (!error && data) {
+        if (cancelled) return;
+        if (data) {
           setProfile(data);
         } else if (error) {
-          if (data) setProfile(data);
+          console.warn('[AuthProvider] Profile fetch error:', error.message);
         }
       } catch {
         // Silent fail - profile will be fetched on next attempt
@@ -78,14 +75,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(null);
           return;
         }
-        
+
         // Update last user ID
         lastUserId = currentUser?.id ?? null;
         setUser(currentUser);
-        
+
         if (currentUser) {
           await fetchProfile(currentUser.id);
-        } else if (isSignOut) {
+        } else {
+          // No user: either signed out or initial session with no auth
+          // Clear profile and stop loading immediately
           clearTimeout(timeoutId);
           setProfile(null);
           setLoading(false);

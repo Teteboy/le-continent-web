@@ -147,6 +147,21 @@ export const referralApi = {
   stats: async (userId: string) => {
     return apiRequest(`/api/referrals/stats/${userId}`);
   },
+
+  /**
+   * Request withdrawal of referral earnings (min 2000 FCFA)
+   */
+  withdraw: async (payload: {
+    userId: string;
+    phone: string;
+    method: 'mtn' | 'orange';
+  }) => {
+    return apiRequest('/api/referrals/withdraw', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      retries: 1,
+    });
+  },
 };
 
 // ========== CONTENT ENDPOINTS ==========

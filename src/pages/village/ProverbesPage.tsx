@@ -20,7 +20,7 @@ interface Proverbe {
 export default function ProverbesPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const isPremium = profile?.is_premium ?? false;
   const { playingId, playSound } = useAudioPlayer();
   const [showPayment, setShowPayment] = useState(false);
@@ -40,6 +40,7 @@ export default function ProverbesPage() {
     currentPage,
     orderBy: 'created_at',
     orderAscending: true,
+    authLoading,
   });
 
   const items = data?.items ?? [];
@@ -119,7 +120,7 @@ export default function ProverbesPage() {
           <div>
             {/* Unlocked items - show 10 for premium, 3 for free */}
             <div className="space-y-4 mb-4">
-              {items.slice(0, isPremium ? ITEMS_PER_PAGE : FREE_LIMIT).map((item) => (
+              {items.slice(0, isPremium ? ITEMS_PER_PAGE : FREE_LIMIT).map((item: Proverbe) => (
                 <div key={item.id} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
                   {item.audio_url && (
                     <div className="flex justify-end mb-3">

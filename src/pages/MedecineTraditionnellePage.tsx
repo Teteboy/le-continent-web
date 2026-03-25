@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Heart, Lock, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, Heart, Lock, Loader2, ChevronDown, ChevronUp, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
@@ -42,16 +42,15 @@ export default function MedecineTraditionnellePage() {
 
   const [remedies, setRemedies] = useState<MedicineRemedy[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [showPayment, setShowPayment] = useState(false);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const retryCount = useRef(0);
 
-  useEffect(() => {
-    fetchRemedies();
-  }, []);
-
-  const fetchRemedies = async () => {
+  const fetchRemedies = useCallback(async (isRetry = false) => {
     try {
-      setLoading(true);
+      if (!isRetry) setLoading(true);
+      setFetchError(null);
       const { data, error } = await supabase
         .from('medicine_traditionnel')
         .select('*')
@@ -60,12 +59,33 @@ export default function MedecineTraditionnellePage() {
 
       if (error) throw error;
       setRemedies(data || []);
+      retryCount.current = 0;
     } catch (err) {
       console.error('Error fetching remedies:', err);
+      // Auto-retry up to 2 times
+      if (retryCount.current < 2) {
+        retryCount.current++;
+        setTimeout(() => fetchRemedies(true), 1500 * retryCount.current);
+        return;
+      }
+      setFetchError('Impossible de charger les remèdes. Vérifiez votre connexion.');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Fetch on mount + refetch when tab becomes visible again (prevents stale/empty pages)
+  useEffect(() => {
+    fetchRemedies();
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchRemedies(true); // silent refetch
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [fetchRemedies]);
 
   // Group remedies by category
   const remediesByCategory = remedies.reduce((acc, remedy) => {
@@ -117,10 +137,22 @@ export default function MedecineTraditionnellePage() {
     return true;
   };
 
-  if (loading) {
+  if (loading && remedies.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F8F9FA]">
         <Loader2 size={40} className="text-[#8B0000] animate-spin" />
+      </div>
+    );
+  }
+
+  if (fetchError && remedies.length === 0) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#F8F9FA] gap-4 px-6 text-center">
+        <AlertCircle size={48} className="text-red-500" />
+        <p className="text-gray-600">{fetchError}</p>
+        <Button onClick={() => { retryCount.current = 0; fetchRemedies(); }} variant="outline" className="flex items-center gap-2">
+          <RefreshCw size={16} /> Réessayer
+        </Button>
       </div>
     );
   }

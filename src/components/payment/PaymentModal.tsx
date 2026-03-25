@@ -258,7 +258,7 @@ export default function PaymentModal({ open, onClose, onSuccess, userPhone }: Pr
       const data = await response.json();
 
       if (data.success && data.ptn) {
-        // Maviance payment initiated - user needs to confirm on phone
+        // CamPay payment initiated - user needs to confirm on phone
         toast.success('Paiement initiated!', {
           description: 'Veuillez confirmer le paiement sur votre téléphone',
           duration: 5000

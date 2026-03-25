@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, BookOpen, ExternalLink, Crown, Lock, Loader2, FileText, ArrowRight, FileDown, Eye } from 'lucide-react';
+import { ArrowLeft, BookOpen, ExternalLink, Crown, Lock, Loader2, FileText, ArrowRight, FileDown, Eye, AlertCircle, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
@@ -29,22 +29,15 @@ export default function BibliothequePage() {
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [selectedBook, setSelectedBook] = useState<CultureBook | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
+  const retryCount = useRef(0);
 
-  useEffect(() => {
-    fetchBooks();
-  }, []);
-
-  useEffect(() => {
-    if (selectedBookId) {
-      fetchBookDetails(selectedBookId);
-    }
-  }, [selectedBookId]);
-
-  const fetchBooks = async () => {
+  const fetchBooks = useCallback(async (isRetry = false) => {
     try {
-      setLoading(true);
+      if (!isRetry) setLoading(true);
+      setFetchError(null);
       const { data, error: err } = await supabase
         .from('cultures_books')
         .select('*')
@@ -53,12 +46,38 @@ export default function BibliothequePage() {
 
       if (err) throw err;
       setBooks(data || []);
+      retryCount.current = 0;
     } catch (err) {
       console.error('Error fetching books:', err);
+      if (retryCount.current < 2) {
+        retryCount.current++;
+        setTimeout(() => fetchBooks(true), 1500 * retryCount.current);
+        return;
+      }
+      setFetchError('Impossible de charger la bibliothèque. Vérifiez votre connexion.');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Fetch on mount + refetch when tab becomes visible (prevents stale/empty pages)
+  useEffect(() => {
+    fetchBooks();
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchBooks(true); // silent refetch
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [fetchBooks]);
+
+  useEffect(() => {
+    if (selectedBookId) {
+      fetchBookDetails(selectedBookId);
+    }
+  }, [selectedBookId]);
 
   const fetchBookDetails = async (bookId: string) => {
     try {
@@ -345,10 +364,22 @@ export default function BibliothequePage() {
   }
 
   // Show categories list
-  if (loading) {
+  if (loading && books.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F8F9FA]">
         <Loader2 size={40} className="text-[#8B0000] animate-spin" />
+      </div>
+    );
+  }
+
+  if (fetchError && books.length === 0) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#F8F9FA] gap-4 px-6 text-center">
+        <AlertCircle size={48} className="text-red-500" />
+        <p className="text-gray-600">{fetchError}</p>
+        <Button onClick={() => { retryCount.current = 0; fetchBooks(); }} variant="outline" className="flex items-center gap-2">
+          <RefreshCw size={16} /> Réessayer
+        </Button>
       </div>
     );
   }

@@ -21,13 +21,13 @@ const rateLimit = require('express-rate-limit');
 // Import Redis cache module
 const { initRedis, closeRedis, setCache, getCache, deleteCache, getCacheKey, AUTH_CACHE_TTL, CACHE_TTL, CONTENT_CACHE_TTL, getCacheStats, resetCacheStats, warmCache } = require('./cache');
 
-// Import Maviance payment services
-const { 
-    makePayment, 
-    getPaymentInfo, 
-    getPaymentItemId, 
-    getErrorMessage 
-} = require('./maviance');
+// Import CamPay payment services
+const {
+    collectPayment,
+    getTransactionStatus,
+    validateWebhookSignature,
+    getErrorMessage
+} = require('./campay');
 
 // Import route handlers
 console.log('[Server] Loading routes...');
@@ -61,7 +61,7 @@ const app = express();
 // CORS - use the cors npm package for proper CORS handling
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps, curl requests)
+    // Allow requests with no origin (like mobile apps, curl requests, server-to-server)
     const allowedOrigins = [
       'http://localhost:3000',
       'http://localhost:5173',
@@ -69,13 +69,12 @@ const corsOptions = {
       'https://www.lecontinent.cm',
       'https://api.lecontinent.cm'
     ];
-    
-    // Allow if origin is in allowed list or if there's no origin
+
     if (!origin || allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
-      console.log('CORS request from origin:', origin);
-      callback(null, true);
+      console.warn('[CORS] Blocked request from unauthorized origin:', origin);
+      callback(new Error('Not allowed by CORS'));
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'],
@@ -477,7 +476,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
             return res.status(500).json({ error: 'Erreur lors de la génération du code' });
         }
 
-        // TODO: Send SMS with reset code using Maviance or SMS service
+        // TODO: Send SMS with reset code using an SMS service
         // For now, we'll return the code in development mode
         const isDevelopment = process.env.NODE_ENV !== 'production';
         
@@ -737,7 +736,7 @@ app.use('/api/admin', adminRouter);
 
 // API Routes for payments
 
-// Initiate payment with Maviance
+// Initiate payment with CamPay
 app.post('/api/payment/initiate', async (req, res) => {
     try {
         const { phone, amount, method, userId, userEmail, userName } = req.body;
@@ -762,38 +761,35 @@ app.post('/api/payment/initiate', async (req, res) => {
 
         payments.set(paymentId, payment);
 
-        console.log(`Initiating Maviance payment: ${method} - ${amount} XAF to ${phone}`);
+        console.log(`[CamPay] Initiating payment: ${method} - ${amount} XAF to ${phone}`);
 
-        // Validate phone number for the payment method
-        const payItemId = getPaymentItemId(phone);
-        if (!payItemId) {
-            payment.status = 'failed';
-            payment.error = 'Invalid phone number for selected operator. Please check the number format.';
-            payments.set(paymentId, payment);
-            return res.status(400).json({ error: 'Invalid phone number for selected operator. Please check the number format. MTN: starts with 65X/67X/68X, Orange: starts with 655/656/657/658/659/69X' });
-        }
-
-        // Format phone number with country code for Maviance
+        // Format phone number with country code for CamPay (expects 2376XXXXXXXX)
         let formattedPhone = phone.replace(/[^0-9]/g, '');
         if (!formattedPhone.startsWith('237')) {
             formattedPhone = '237' + formattedPhone;
         }
 
-        console.log(`Using PayItem ID: ${payItemId}`);
-        console.log(`Formatted phone: ${formattedPhone}`);
+        console.log(`[CamPay] Formatted phone: ${formattedPhone}`);
 
-        // Make payment via Maviance with formatted phone number
-        const ptn = await makePayment({
+        // Initiate collect via CamPay
+        const collectResult = await collectPayment({
             amount: amount,
-            serviceNumber: formattedPhone,
-            customerEmailaddress: userEmail || 'client@lecontinent.cm',
-            customerName: userName || 'Client Le Continent',
-            customerAddress: 'Cameroon'
+            phone: formattedPhone,
+            description: `Le Continent Premium - ${userName || 'Client'}`,
+            externalRef: reference
         });
 
-        console.log(`Maviance PTN: ${ptn}`);
+        // CamPay returns a reference to track the transaction
+        const campayRef = collectResult.reference || collectResult.ref || '';
+        console.log(`[CamPay] Transaction reference: ${campayRef}`);
 
-        payment.ptn = ptn;
+        if (!campayRef) {
+            throw new Error(collectResult.message || 'Failed to initiate CamPay payment');
+        }
+
+        // Store the CamPay reference (using ptn field for backward compatibility)
+        payment.ptn = campayRef;
+        payment.campayRef = campayRef;
         payment.status = 'pending';
         payments.set(paymentId, payment);
 
@@ -801,27 +797,16 @@ app.post('/api/payment/initiate', async (req, res) => {
             success: true,
             paymentId,
             reference,
-            ptn: ptn,
+            ptn: campayRef,
             status: 'pending',
             message: 'Payment initiated. Please confirm the payment on your phone.'
         });
 
     } catch (error) {
-        console.error('Payment initiation error:', error);
-        
-        let errorMessage = 'Payment initiation failed';
-        const errorStr = error.message || '';
-        
-        if (errorStr.includes('703108') || errorStr.includes('insufficient')) {
-            errorMessage = 'Solde insuffisant. Veuillez recharger votre compte et réessayer.';
-        } else if (errorStr.includes('703202') || errorStr.includes('rejected') || errorStr.includes('rejecté')) {
-            errorMessage = 'Paiement refusé. Veuillez vérifier votre compte et réessayer.';
-        } else if (errorStr.includes('703201')) {
-            errorMessage = 'Paiement non confirmé. Veuillez réessayer.';
-        } else if (errorStr.includes('700')) {
-            errorMessage = 'Erreur de service. Veuillez réessayer plus tard.';
-        }
-        
+        console.error('[CamPay] Payment initiation error:', error);
+
+        const errorMessage = getErrorMessage(error.message);
+
         const { phone, amount } = req.body;
         if (phone && amount) {
             for (const [paymentId, payment] of payments.entries()) {
@@ -833,7 +818,7 @@ app.post('/api/payment/initiate', async (req, res) => {
                 }
             }
         }
-        
+
         res.status(500).json({ error: errorMessage });
     }
 });
@@ -915,48 +900,17 @@ app.post('/api/payment/confirm', async (req, res) => {
 
         if (payment.ptn) {
             try {
-                const paymentInfo = await getPaymentInfo(payment.ptn);
-                console.log('Maviance payment info:', JSON.stringify(paymentInfo));
+                const txStatus = await getTransactionStatus(payment.ptn);
+                console.log('[CamPay] Transaction status:', JSON.stringify(txStatus));
 
-                const responseData = Array.isArray(paymentInfo.responseData) 
-                    ? paymentInfo.responseData[0] 
-                    : paymentInfo.responseData;
+                const status = (txStatus.status || '').toUpperCase();
 
-                // Check multiple possible status fields
-                const status = responseData?.status || responseData?.statuses || responseData?.statusText;
-                const statusText = responseData?.status_text || responseData?.statusMessage || responseData?.message;
-                const errorCode = responseData?.errorCode || responseData?.error_code;
-                
-                console.log(`Payment status check: status='${status}', statusText='${statusText}', errorCode='${errorCode}'`);
+                console.log(`[CamPay] Payment status check: status='${status}'`);
 
-                // Expanded success status checks
-                const isSuccess = status === 'SUCCESS' || 
-                                 status === 'success' || 
-                                 status === 'completed' || 
-                                 status === 'COMPLETED' ||
-                                 status === 'Approved' ||
-                                 status === 'approved' ||
-                                 status === 'ACCEPTED' ||
-                                 status === 'accepted';
-
-                // Expanded failure status checks
-                const isFailed = status === 'FAILED' || 
-                               status === 'failed' || 
-                               status === 'ERRORED' || 
-                               status === 'ERROR' ||
-                               status === 'error' ||
-                               status === 'REJECTED' ||
-                               status === 'rejected' ||
-                               status === 'CANCELLED' ||
-                               status === 'cancelled' ||
-                               status === 'EXPIRED' ||
-                               status === 'expired' ||
-                               !!errorCode;
-
-                if (isSuccess) {
+                if (status === 'SUCCESSFUL') {
                     payment.status = 'completed';
                     payment.completedAt = new Date().toISOString();
-                    payment.apiResponse = paymentInfo.responseData;
+                    payment.apiResponse = txStatus;
                     payments.set(payment.id, payment);
 
                     console.log(`Payment completed! UserId: ${payment.userId}`);
@@ -964,8 +918,7 @@ app.post('/api/payment/confirm', async (req, res) => {
                     if (payment.userId) {
                         const updateResult = await updateUserPremiumStatus(payment.userId, true);
                         console.log('Premium update result:', updateResult);
-                        
-                        // Save payment to database
+
                         const saveResult = await savePaymentToDatabase(payment);
                         console.log('Payment save result:', saveResult);
                     }
@@ -976,13 +929,10 @@ app.post('/api/payment/confirm', async (req, res) => {
                         payment,
                         message: 'Payment confirmed successfully!'
                     });
-                } else if (isFailed) {
+                } else if (status === 'FAILED') {
                     payment.status = 'failed';
-                    // Convert errorCode to number if it's a string
-                    const errorCodeNum = typeof errorCode === 'string' ? parseInt(errorCode, 10) : errorCode;
-                    payment.error = statusText || getErrorMessage(errorCodeNum) || getErrorMessage(errorCode) || 'Payment failed';
-                    payment.errorCode = errorCode;
-                    payment.apiResponse = paymentInfo.responseData;
+                    payment.error = getErrorMessage(txStatus.reason || txStatus.message || '') || 'Payment failed';
+                    payment.apiResponse = txStatus;
                     payments.set(payment.id, payment);
 
                     return res.json({
@@ -991,35 +941,34 @@ app.post('/api/payment/confirm', async (req, res) => {
                         message: payment.error
                     });
                 } else {
-                    // Status is pending - check how long we've been waiting
+                    // Status is PENDING - check how long we've been waiting
                     const pendingDuration = Date.now() - new Date(payment.createdAt).getTime();
                     const maxPendingMs = 3 * 60 * 1000; // 3 minutes max for pending
-                    
+
                     console.log(`Payment pending for ${Math.round(pendingDuration/1000)}s`);
-                    
+
                     if (pendingDuration > maxPendingMs) {
-                        // Too long in pending - mark as failed
                         payment.status = 'failed';
-                        payment.error = 'Paiement Orange Money non confirmé. Le popup USSD n\'a peut-être pas été reçu. Veuillez réessayer avec MTN ou contacter le support.';
-                        payment.apiResponse = paymentInfo.responseData;
+                        payment.error = 'Paiement non confirmé. Le popup USSD n\'a peut-être pas été reçu. Veuillez réessayer ou contacter le support.';
+                        payment.apiResponse = txStatus;
                         payments.set(payment.id, payment);
-                        
+
                         return res.json({
                             success: false,
                             status: 'failed',
                             message: payment.error
                         });
                     }
-                    
+
                     return res.json({
                         success: true,
                         status: payment.status || 'pending',
-                        message: 'En attente de confirmation sur votre téléphone. Si le popup n\'arrive pas, le paiement Orange peut avoir un problème.',
-                        debug: { mavianceStatus: status, pendingDuration: Math.round(pendingDuration/1000) }
+                        message: 'En attente de confirmation sur votre téléphone.',
+                        debug: { campayStatus: status, pendingDuration: Math.round(pendingDuration/1000) }
                     });
                 }
             } catch (apiError) {
-                console.error('Error checking payment status:', apiError);
+                console.error('[CamPay] Error checking payment status:', apiError);
             }
         }
 
@@ -1035,56 +984,72 @@ app.post('/api/payment/confirm', async (req, res) => {
     }
 });
 
-// Payment webhook callback
+// CamPay payment webhook callback
 app.post('/api/payment/webhook', async (req, res) => {
     try {
         const callbackData = req.body;
-        console.log('Maviance webhook received:', callbackData);
+        console.log('[CamPay] Webhook received:', callbackData);
 
-        const { ptn, status, reference } = callbackData;
+        // Validate webhook signature if provided
+        const webhookSignature = req.headers['x-campay-signature'] || req.headers['authorization'];
+        if (!validateWebhookSignature(callbackData, webhookSignature)) {
+            console.warn('[CamPay] Invalid webhook signature');
+            return res.status(401).json({ error: 'Invalid signature' });
+        }
+
+        // CamPay webhook payload: { status, reference, external_reference, amount, currency, operator, code, ... }
+        const { status, reference, external_reference } = callbackData;
 
         let payment = null;
-        
-        if (ptn) {
-            for (const [id, p] of payments.entries()) {
-                if (p.ptn === ptn) {
+
+        // Find payment by CamPay reference (stored in ptn field)
+        if (reference) {
+            for (const [, p] of payments.entries()) {
+                if (p.ptn === reference || p.campayRef === reference) {
                     payment = p;
                     break;
                 }
             }
         }
 
-        if (!payment && reference) {
-            payment = payments.get(reference);
+        // Also try external_reference which maps to our internal reference
+        if (!payment && external_reference) {
+            for (const [, p] of payments.entries()) {
+                if (p.reference === external_reference) {
+                    payment = p;
+                    break;
+                }
+            }
         }
 
         if (!payment) {
-            console.log('Payment not found for webhook:', ptn || reference);
+            console.log('[CamPay] Payment not found for webhook:', reference || external_reference);
             return res.json({ status: 'received' });
         }
 
-        if (status === 'SUCCESS' || status === 'success' || status === 'completed') {
+        const normalizedStatus = (status || '').toUpperCase();
+
+        if (normalizedStatus === 'SUCCESSFUL') {
             payment.status = 'completed';
             payment.completedAt = new Date().toISOString();
 
             if (payment.userId) {
                 await updateUserPremiumStatus(payment.userId, true);
-                // Save payment to database
                 await savePaymentToDatabase(payment);
             }
-        } else if (status === 'FAILED' || status === 'failed') {
+        } else if (normalizedStatus === 'FAILED') {
             payment.status = 'failed';
-            payment.error = callbackData.status_text || 'Payment failed';
+            payment.error = callbackData.reason || callbackData.message || 'Payment failed';
         }
 
         payment.webhookData = callbackData;
         payments.set(payment.id, payment);
 
-        console.log('Payment updated from webhook:', payment);
+        console.log('[CamPay] Payment updated from webhook:', payment);
         res.json({ status: 'ok' });
 
     } catch (error) {
-        console.error('Webhook error:', error);
+        console.error('[CamPay] Webhook error:', error);
         res.status(500).json({ error: 'Webhook processing failed' });
     }
 });
@@ -1100,32 +1065,25 @@ app.get('/api/payment/status/:paymentId', async (req, res) => {
 
     if (payment.status === 'pending' && payment.ptn) {
         try {
-            const paymentInfo = await getPaymentInfo(payment.ptn);
-            
-            const responseData = Array.isArray(paymentInfo.responseData) 
-                ? paymentInfo.responseData[0] 
-                : paymentInfo.responseData;
+            const txStatus = await getTransactionStatus(payment.ptn);
+            const status = (txStatus.status || '').toUpperCase();
 
-            const status = responseData?.status;
-            const errorCode = responseData?.errorCode;
-            
-            if (status === 'SUCCESS' || status === 'success') {
+            if (status === 'SUCCESSFUL') {
                 payment.status = 'completed';
                 payment.completedAt = new Date().toISOString();
-                
+
                 if (payment.userId) {
                     await updateUserPremiumStatus(payment.userId, true);
-                    // Save payment to database
                     await savePaymentToDatabase(payment);
                 }
-            } else if (status === 'FAILED' || status === 'failed' || status === 'ERRORED' || errorCode) {
+            } else if (status === 'FAILED') {
                 payment.status = 'failed';
-                payment.error = getErrorMessage(errorCode) || 'Payment failed';
+                payment.error = getErrorMessage(txStatus.reason || txStatus.message || '') || 'Payment failed';
             }
-            
+
             payments.set(paymentId, payment);
         } catch (error) {
-            console.error('Error checking payment status:', error);
+            console.error('[CamPay] Error checking payment status:', error);
         }
     }
 
@@ -1163,8 +1121,57 @@ app.post('/api/payment/cancel', async (req, res) => {
     }
 });
 
+// Admin authentication middleware for debug endpoints
+// Verifies the request comes from an admin user via Supabase
+async function requireAdmin(req, res, next) {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ error: 'Authentication required' });
+        }
+
+        const token = authHeader.split(' ')[1];
+
+        // Verify user via Supabase
+        const userResponse = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+            headers: {
+                'apikey': SUPABASE_KEY,
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!userResponse.ok) {
+            return res.status(401).json({ error: 'Invalid or expired token' });
+        }
+
+        const user = await userResponse.json();
+
+        // Check admin status in profiles table
+        const profileResponse = await fetch(
+            `${SUPABASE_URL}/rest/v1/profiles?id=eq.${user.id}&select=is_admin`,
+            {
+                headers: {
+                    'apikey': SUPABASE_KEY,
+                    'Authorization': `Bearer ${SUPABASE_KEY}`
+                }
+            }
+        );
+
+        const profiles = await profileResponse.json();
+        if (!profiles[0]?.is_admin) {
+            return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        req.adminUser = user;
+        next();
+    } catch (error) {
+        console.error('[Auth] Admin check error:', error);
+        return res.status(500).json({ error: 'Authentication check failed' });
+    }
+}
+
 // Debug endpoint: List all payments (for admin troubleshooting)
-app.get('/api/debug/payments', (req, res) => {
+app.get('/api/debug/payments', requireAdmin, (req, res) => {
     const allPayments = Array.from(payments.entries()).map(([id, p]) => ({
         id,
         reference: p.reference,
@@ -1180,14 +1187,14 @@ app.get('/api/debug/payments', (req, res) => {
 });
 
 // Debug endpoint: Manually update user premium (for admin use)
-app.post('/api/debug/update-premium', async (req, res) => {
+app.post('/api/debug/update-premium', requireAdmin, async (req, res) => {
     const { userId, isPremium } = req.body;
-    
+
     if (!userId) {
         return res.status(400).json({ error: 'userId is required' });
     }
-    
-    console.log(`DEBUG: Manual premium update for user ${userId} to ${isPremium}`);
+
+    console.log(`DEBUG: Manual premium update for user ${userId} to ${isPremium} (by admin ${req.adminUser.id})`);
     const result = await updateUserPremiumStatus(userId, isPremium);
     res.json(result);
 });
@@ -1240,9 +1247,13 @@ async function updateUserPremiumStatus(userId, isPremium) {
         });
 
         const responseText = await response.text();
-        
+
         if (response.ok) {
             console.log(`User ${userId} premium status updated successfully`);
+            // Process referral commission when user becomes premium
+            if (isPremium) {
+                await processReferralCommission(userId);
+            }
             return { success: true };
         } else {
             console.error(`Failed to update user ${userId} premium status:`, response.status, responseText);
@@ -1251,6 +1262,101 @@ async function updateUserPremiumStatus(userId, isPremium) {
     } catch (error) {
         console.error('Error updating user premium status:', error);
         return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Check if the newly paying user was referred by someone.
+ * If yes, add 500 FCFA commission to the referrer's earnings.
+ */
+async function processReferralCommission(newPremiumUserId) {
+    const COMMISSION_AMOUNT = 500; // FCFA per successful referral
+
+    try {
+        // Fetch the new premium user's profile to check referred_by
+        const profileRes = await fetch(
+            `${SUPABASE_URL}/rest/v1/profiles?id=eq.${newPremiumUserId}&select=referred_by&limit=1`,
+            {
+                headers: {
+                    'apikey': SUPABASE_KEY,
+                    'Authorization': `Bearer ${SUPABASE_KEY}`
+                }
+            }
+        );
+
+        if (!profileRes.ok) return;
+        const profiles = await profileRes.json();
+        const referrerId = profiles[0]?.referred_by;
+
+        if (!referrerId) {
+            console.log(`[Referral] User ${newPremiumUserId} has no referrer. Skipping commission.`);
+            return;
+        }
+
+        console.log(`[Referral] User ${newPremiumUserId} was referred by ${referrerId}. Processing ${COMMISSION_AMOUNT} FCFA commission.`);
+
+        // Fetch current referrer earnings to increment
+        const referrerRes = await fetch(
+            `${SUPABASE_URL}/rest/v1/profiles?id=eq.${referrerId}&select=referral_earnings,referral_count&limit=1`,
+            {
+                headers: {
+                    'apikey': SUPABASE_KEY,
+                    'Authorization': `Bearer ${SUPABASE_KEY}`
+                }
+            }
+        );
+
+        if (!referrerRes.ok) return;
+        const referrers = await referrerRes.json();
+        const referrer = referrers[0];
+        if (!referrer) return;
+
+        const newEarnings = (referrer.referral_earnings || 0) + COMMISSION_AMOUNT;
+        const newCount = (referrer.referral_count || 0) + 1;
+
+        // Update referrer's earnings and count
+        const updateRes = await fetch(
+            `${SUPABASE_URL}/rest/v1/profiles?id=eq.${referrerId}`,
+            {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'apikey': SUPABASE_KEY,
+                    'Authorization': `Bearer ${SUPABASE_KEY}`
+                },
+                body: JSON.stringify({
+                    referral_earnings: newEarnings,
+                    referral_count: newCount,
+                })
+            }
+        );
+
+        if (updateRes.ok) {
+            console.log(`[Referral] Referrer ${referrerId} credited ${COMMISSION_AMOUNT} FCFA. Total earnings: ${newEarnings} FCFA`);
+        } else {
+            console.error(`[Referral] Failed to update referrer earnings:`, await updateRes.text());
+        }
+
+        // Log the referral commission in the referrals table
+        await fetch(`${SUPABASE_URL}/rest/v1/referrals`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'apikey': SUPABASE_KEY,
+                'Authorization': `Bearer ${SUPABASE_KEY}`,
+                'Prefer': 'return=minimal'
+            },
+            body: JSON.stringify({
+                referrer_id: referrerId,
+                referred_id: newPremiumUserId,
+                commission_amount: COMMISSION_AMOUNT,
+                status: 'paid',
+                paid_at: new Date().toISOString(),
+            })
+        });
+
+    } catch (err) {
+        console.error('[Referral] Error processing referral commission:', err);
     }
 }
 
@@ -1325,7 +1431,7 @@ try {
         console.log(`Le Continent server running on ${HOST}:${PORT}`);
         console.log(`Health check: http://localhost:${PORT}/api/health`);
         console.log(`Serving frontend from: ${staticPath || 'not found'}`);
-        console.log('Maviance integration enabled');
+        console.log('CamPay integration enabled');
         console.log('Supported methods: MTN Cameroon, Orange Cameroon');
     });
 } catch (err) {

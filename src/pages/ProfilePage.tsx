@@ -16,6 +16,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useReferrals } from '@/hooks/useReferrals';
 import { supabase } from '@/lib/supabase';
 import { generatePromoCode } from '@/lib/promoCode';
+import { referralApi } from '@/lib/api-client';
 import PaymentModal from '@/components/payment/PaymentModal';
 
 export default function ProfilePage() {
@@ -410,14 +411,29 @@ Utilise mon code promo *${profile.promo_code}* pour bénéficier d'une réductio
                   <p className="text-white/70 text-xs">Commission</p>
                 </div>
               </div>
-              {totalEarnings > 0 && (
-                <Button
-                  onClick={() => setShowWithdraw(true)}
-                  className="w-full mt-4 bg-white text-[#27AE60] hover:bg-gray-100 font-bold py-3 rounded-xl flex items-center justify-center gap-2"
-                >
-                  <DollarSign size={18} /> Retirer mes gains ({totalEarnings}FCFA)
-                </Button>
-              )}
+              <div className="mt-4">
+                <div className="bg-white/10 rounded-xl px-4 py-2 mb-3 flex items-center gap-2">
+                  <Wallet size={14} className="text-white/80 shrink-0" />
+                  <p className="text-white/90 text-xs font-medium">
+                    Retrait possible à partir de <span className="font-black text-white">2 000 FCFA</span>
+                  </p>
+                </div>
+                {totalEarnings >= 2000 ? (
+                  <Button
+                    onClick={() => setShowWithdraw(true)}
+                    className="w-full bg-white text-[#27AE60] hover:bg-gray-100 font-bold py-3 rounded-xl flex items-center justify-center gap-2"
+                  >
+                    <DollarSign size={18} /> Retirer mes gains ({totalEarnings.toLocaleString('fr-FR')} FCFA)
+                  </Button>
+                ) : (
+                  <Button
+                    disabled
+                    className="w-full bg-white/30 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 cursor-not-allowed"
+                  >
+                    <DollarSign size={18} /> Encore {(2000 - totalEarnings).toLocaleString('fr-FR')} FCFA avant le retrait
+                  </Button>
+                )}
+              </div>
             </div>
 
             {/* How it works */}
@@ -539,8 +555,9 @@ Utilise mon code promo *${profile.promo_code}* pour bénéficier d'une réductio
               </div>
               <h3 className="text-xl font-bold text-[#2C3E50]">Retrait de gains</h3>
               <p className="text-gray-500 text-sm mt-1">
-                Solde disponible : <span className="font-bold text-[#27AE60]">{totalEarnings.toLocaleString('fr-FR')}FCFA</span>
+                Solde disponible : <span className="font-bold text-[#27AE60]">{totalEarnings.toLocaleString('fr-FR')} FCFA</span>
               </p>
+              <p className="text-xs text-gray-400 mt-1">Minimum de retrait : 2 000 FCFA</p>
             </div>
             <div className="space-y-4">
               <div>
@@ -576,15 +593,31 @@ Utilise mon code promo *${profile.promo_code}* pour bénéficier d'une réductio
                 onClick={async () => {
                   if (!withdrawPhone.trim()) { toast.error('Entrez votre numéro Mobile Money'); return; }
                   if (!withdrawMethod) { toast.error('Sélectionnez un opérateur'); return; }
+                  if (totalEarnings < 2000) { toast.error('Minimum de retrait : 2 000 FCFA'); return; }
                   setWithdrawLoading(true);
-                  await new Promise((r) => setTimeout(r, 1500));
-                  setWithdrawLoading(false);
-                  setShowWithdraw(false);
-                  toast.success('Demande de retrait soumise !', {
-                    description: `${totalEarnings}FCFA seront transférés sur ${withdrawPhone} sous 24-48h.`,
-                  });
+                  try {
+                    const res = await referralApi.withdraw({
+                      userId: user!.id,
+                      phone: withdrawPhone.trim(),
+                      method: withdrawMethod as 'mtn' | 'orange',
+                    }) as { data?: { success?: boolean; message?: string; error?: string }; success?: boolean; error?: string };
+                    if (res.data?.success || res.success) {
+                      setShowWithdraw(false);
+                      toast.success('Demande de retrait soumise !', {
+                        description: res.data?.message || `${totalEarnings} FCFA seront transférés sur ${withdrawPhone} sous 24-48h.`,
+                      });
+                      // Refresh profile to reflect updated earnings
+                      window.location.reload();
+                    } else {
+                      toast.error(res.data?.error || res.error || 'Échec de la demande de retrait');
+                    }
+                  } catch (err: any) {
+                    toast.error(err?.message || 'Erreur réseau. Réessayez.');
+                  } finally {
+                    setWithdrawLoading(false);
+                  }
                 }}
-                disabled={withdrawLoading}
+                disabled={withdrawLoading || totalEarnings < 2000}
                 className="w-full bg-[#27AE60] hover:bg-[#219A52] text-white font-bold h-12 rounded-xl flex items-center justify-center gap-2"
               >
                 {withdrawLoading ? (

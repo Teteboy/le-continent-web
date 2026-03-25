@@ -21,7 +21,7 @@ interface LexiqueEntry {
 export default function LexiquePage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const isPremium = profile?.is_premium ?? false;
   const { playingId, playSound } = useAudioPlayer();
   const [showPayment, setShowPayment] = useState(false);
@@ -43,9 +43,10 @@ export default function LexiquePage() {
     searchColumns: ['french', 'local'],
     orderBy: 'french',
     orderAscending: true,
+    authLoading,
   });
 
-  const items = data?.items ?? [];
+  const items: LexiqueEntry[] = data?.items ?? [];
   const total = data?.total ?? 0;
   const totalPages = data?.totalPages ?? 0;
   const lockedCount = data?.lockedCount ?? 0;

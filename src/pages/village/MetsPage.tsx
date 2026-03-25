@@ -23,7 +23,7 @@ interface Met {
 export default function MetsPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const isPremium = profile?.is_premium ?? false;
   const [showPayment, setShowPayment] = useState(false);
   const [search, setSearch] = useState('');
@@ -44,9 +44,10 @@ export default function MetsPage() {
     searchColumns: ['name'],
     orderBy: 'name',
     orderAscending: true,
+    authLoading,
   });
 
-  const items = data?.items ?? [];
+  const items: Met[] = data?.items ?? [];
   const total = data?.total ?? 0;
   const totalPages = data?.totalPages ?? 0;
   const lockedCount = data?.lockedCount ?? 0;

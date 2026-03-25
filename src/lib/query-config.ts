@@ -9,21 +9,21 @@ export const queryConfig: DefaultOptions = {
   queries: {
     // Stale time: how long data is considered fresh
     staleTime: 5 * 60 * 1000, // 5 minutes
-    
+
     // Garbage collection: how long unused data is kept in cache
     gcTime: 30 * 60 * 1000, // 30 minutes (was cacheTime)
-    
-    // Refetch behavior - disabled for better UX
-    refetchOnWindowFocus: false, // Don't refetch on window focus to prevent loading spinners
-    refetchOnReconnect: false, // Don't refetch on reconnect
-    refetchOnMount: false, // Don't refetch if data is still fresh
-    
-    // Retry strategy
-    retry: 1, // Only retry once
+
+    // Refetch behavior — critical for keeping content alive:
+    refetchOnWindowFocus: true, // Refetch stale data when user returns to tab/app
+    refetchOnReconnect: true, // Refetch on reconnect to avoid stale data
+    refetchOnMount: true, // Always refetch stale data when component mounts (navigation)
+
+    // Retry strategy — 2 retries for unreliable mobile networks
+    retry: 2,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
-    
-    // Keep previous data while refetching
-    placeholderData: (previousData: unknown) => previousData,
+
+    // NOTE: Do NOT set placeholderData globally — it hides loading states
+    // for new queries where previousData is undefined, causing blank pages.
   },
 
   mutations: {
@@ -56,20 +56,15 @@ export const specificConfigs = {
     refetchOnWindowFocus: false,
   },
 
-  // User profile - more aggressive caching
+  // User profile
   profile: {
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 30 * 60 * 1000, // 30 minutes
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
   },
 
-  // Villages - very long caching since they rarely change
+  // Villages - long caching since they rarely change
   villages: {
     staleTime: 60 * 60 * 1000, // 1 hour
     gcTime: 24 * 60 * 60 * 1000, // 24 hours
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
-    refetchOnReconnect: false,
   },
 };

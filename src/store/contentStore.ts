@@ -45,7 +45,7 @@ export const useContentStore = create<ContentState>()(
 
     setContent: (table, items) =>
       set((state) => {
-        state[table as keyof ContentState] = items;
+        (state as Record<string, unknown>)[table] = items;
       }),
 
     setLoading: (table, isLoading) =>
@@ -61,7 +61,7 @@ export const useContentStore = create<ContentState>()(
     clearContent: (table) =>
       set((state) => {
         if (table) {
-          state[table as keyof ContentState] = [];
+          (state as Record<string, unknown>)[table] = [];
           delete state.loading[table];
           delete state.errors[table];
         } else {

@@ -227,4 +227,109 @@ router.get('/stats/:userId', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/referrals/withdraw
+ * Request withdrawal of referral earnings via Mobile Money.
+ * Minimum withdrawal: 2000 FCFA.
+ */
+router.post('/withdraw', async (req, res) => {
+  const MIN_WITHDRAWAL = 2000; // FCFA
+
+  try {
+    const { userId, phone, method } = req.body;
+
+    if (!userId) return res.status(400).json({ error: 'userId est requis' });
+    if (!phone || !phone.trim()) return res.status(400).json({ error: 'Numéro Mobile Money requis' });
+    if (!method) return res.status(400).json({ error: 'Sélectionnez un opérateur (mtn ou orange)' });
+
+    // Fetch current earnings
+    const profileRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=referral_earnings,first_name,last_name,phone`,
+      {
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`
+        }
+      }
+    );
+
+    if (!profileRes.ok) {
+      return res.status(500).json({ error: 'Impossible de récupérer le profil' });
+    }
+
+    const profiles = await profileRes.json();
+    const profile = profiles[0];
+
+    if (!profile) {
+      return res.status(404).json({ error: 'Utilisateur introuvable' });
+    }
+
+    const currentEarnings = profile.referral_earnings || 0;
+
+    if (currentEarnings < MIN_WITHDRAWAL) {
+      return res.status(400).json({
+        error: `Solde insuffisant. Minimum de retrait : ${MIN_WITHDRAWAL} FCFA. Votre solde : ${currentEarnings} FCFA.`
+      });
+    }
+
+    // Deduct the withdrawal amount from earnings
+    const newEarnings = 0; // Withdraw all available earnings
+    const withdrawalAmount = currentEarnings;
+
+    const updateRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`
+        },
+        body: JSON.stringify({
+          referral_earnings: newEarnings,
+          updated_at: new Date().toISOString()
+        })
+      }
+    );
+
+    if (!updateRes.ok) {
+      console.error('[Withdrawal] Failed to deduct earnings:', await updateRes.text());
+      return res.status(500).json({ error: 'Échec de la mise à jour du solde' });
+    }
+
+    // Log the withdrawal request in a withdrawals table (or referrals table)
+    // We'll store it so the admin can process the Mobile Money transfer
+    await fetch(`${SUPABASE_URL}/rest/v1/withdrawals`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        amount: withdrawalAmount,
+        phone: phone.trim(),
+        method: method,
+        status: 'pending',
+        user_name: `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
+        created_at: new Date().toISOString()
+      })
+    });
+
+    console.log(`[Withdrawal] User ${userId} requested withdrawal of ${withdrawalAmount} FCFA to ${phone} via ${method}`);
+
+    res.json({
+      success: true,
+      amount: withdrawalAmount,
+      message: `Demande de retrait de ${withdrawalAmount} FCFA soumise. Transfert sous 24-48h.`
+    });
+
+  } catch (error) {
+    console.error('[Withdrawal] Error:', error);
+    res.status(500).json({ error: 'Échec de la demande de retrait' });
+  }
+});
+
 module.exports = router;

@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 
 // Get API URL - use localhost in development, production API in production
@@ -38,6 +38,8 @@ interface UseVillageContentOptions {
   searchColumns?: string[];
   orderBy?: string;
   orderAscending?: boolean;
+  /** Pass `true` while auth is still loading to prevent premature fetches */
+  authLoading?: boolean;
 }
 
 interface VillageContentResult<T> {
@@ -57,10 +59,14 @@ export function useVillageContent<T = Record<string, unknown>>({
   searchColumns = [],
   orderBy = 'created_at',
   orderAscending = true,
+  authLoading = false,
 }: UseVillageContentOptions) {
-  const enabled = !!villageId;
+  // Don't start fetching until we know the user's premium status
+  // to avoid creating a query with isPremium=false then immediately
+  // invalidating it when auth resolves to isPremium=true (blank flash)
+  const enabled = !!villageId && !authLoading;
   
-  return useQuery<VillageContentResult<T>>({
+  const query = useQuery<VillageContentResult<T>>({
     queryKey: ['village', table, villageId, isPremium ? 'premium' : 'free', currentPage, search.trim()],
     queryFn: async (): Promise<VillageContentResult<T>> => {
       if (!villageId) return { items: [], total: 0, totalPages: 0, lockedCount: 0 };
@@ -81,11 +87,17 @@ export function useVillageContent<T = Record<string, unknown>>({
           const apiUrl = `${API_BASE}/api/content/${table}?${params.toString()}`;
           console.log('[useVillageContent] Fetching from API:', apiUrl);
           
+          // Abort if API takes too long (5s) — fall back to Supabase
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 5000);
+
           const response = await fetch(apiUrl, {
             headers: {
               'Content-Type': 'application/json',
             },
+            signal: controller.signal,
           });
+          clearTimeout(timeout);
 
           if (response.ok) {
             const data = await response.json();
@@ -176,12 +188,21 @@ if (!isPremium) {
       };
     },
     enabled,
-    staleTime: 30 * 60 * 1000, // 30 minutes - keep data fresh for instant navigation
-    gcTime: 60 * 60 * 1000, // 1 hour
-    refetchInterval: false,
-    refetchOnWindowFocus: false,
-    refetchOnMount: false, // Never refetch on mount - use cached data for instant display
-    retry: 1, // Only retry once on failure
-    retryDelay: 500,
+    staleTime: 5 * 60 * 1000, // 5 minutes - data considered fresh
+    gcTime: 60 * 60 * 1000, // 1 hour - keep in cache for back-navigation
+    refetchOnWindowFocus: true, // Refetch stale data when user returns to tab
+    refetchOnMount: true, // Always refetch stale data on navigation
+    // Use keepPreviousData so page transitions show old data while refetching
+    // (only works when there IS previous data; new queries still show loading)
+    placeholderData: keepPreviousData,
+    retry: 2,
+    retryDelay: (attempt: number) => Math.min(1000 * 2 ** attempt, 8000),
   });
+
+  // Expose a combined isLoading that includes authLoading,
+  // so consumers don't need to check both independently
+  return {
+    ...query,
+    isLoading: query.isLoading || authLoading,
+  };
 }

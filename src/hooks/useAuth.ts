@@ -55,12 +55,16 @@ export function useAuth() {
     }
   };
 
+  const refreshProfile = async () => {
+    if (user) await fetchProfile(user.id);
+  };
+
   return {
     user,
     session,
     profile,
     loading,
     signOut,
-    refetchProfile: () => user && fetchProfile(user.id),
+    refetchProfile: refreshProfile,
   };
 }

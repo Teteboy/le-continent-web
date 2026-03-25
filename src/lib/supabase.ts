@@ -1,7 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://dltkfjkodqpzmpuctnju.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsdGtmamtvZHFwem1wdWN0bmp1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDE2ODMyMSwiZXhwIjoyMDc5NzQ0MzIxfQ.Vz6yapqHN7NlI83izQiFGIf2L_8vegNMpl99r_yQxDw';
+// Use environment variables for Supabase configuration.
+// IMPORTANT: The frontend MUST use the anon (public) key, NOT the service_role key.
+// The service_role key bypasses Row Level Security and should only be used server-side.
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://dltkfjkodqpzmpuctnju.supabase.co';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 /**
  * Serial-queue lock to replace Supabase's default Web Locks-based locking.
@@ -83,9 +86,10 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   global: {
     fetch: (url, options) => {
       // Add timeout to prevent infinite hanging
+      // 30s for mobile networks that may be slow after idle/background
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000); // 15 second timeout
-      
+      const timeout = setTimeout(() => controller.abort(), 30000);
+
       return fetch(url, {
         ...options,
         signal: controller.signal,
