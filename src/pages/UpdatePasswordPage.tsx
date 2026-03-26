@@ -80,7 +80,7 @@ export default function UpdatePasswordPage() {
         description: 'Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.',
       });
       
-      navigate('/cultures');
+      navigate('/cultures-premium');
     } catch (err) {
       console.error('Update password error:', err);
       toast.error('Erreur lors de la mise à jour.', {
