@@ -15,7 +15,7 @@ interface RequestOptions extends RequestInit {
   retries?: number;
 }
 
-const API_BASE = import.meta.env.VITE_API_URL || 'https://api.lecontinent.cm';
+const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3000' : 'https://api.lecontinent.cm');
 const DEFAULT_TIMEOUT = 10000; // 10 seconds
 const DEFAULT_RETRIES = 1;
 

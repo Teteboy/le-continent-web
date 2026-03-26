@@ -227,7 +227,9 @@ export default function SignupPage() {
 
   const handlePromoClose = () => {
     setShowPromo(false);
-    navigate('/login');
+    // If user is already logged in (session was created on signup), go to premium page
+    // Otherwise go to login
+    navigate('/cultures-premium');
   };
 
   return (

@@ -13,9 +13,9 @@ import { toast } from 'sonner';
 import HeroSection from '@/components/home/HeroSection';
 import { PREMIUM_CONTENT } from '@/data/inventions';
 import { FREE_CULTURES } from '@/data/cultures';
-import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { generatePromoCode } from '@/lib/promoCode';
+import { profileApi } from '@/lib/api-client';
 
 interface Village {
   id: string;
@@ -88,12 +88,9 @@ export default function LandingPage() {
     setIsGenerating(true);
     try {
       const code = generatePromoCode();
-      const { error } = await supabase
-        .from('profiles')
-        .update({ promo_code: code })
-        .eq('id', user.id);
+      const response = await profileApi.update(user.id, { promo_code: code });
 
-      if (error) throw error;
+      if (response.error) throw new Error(response.error as string);
       setReferralCode(code);
       setShowReferralDialog(true);
       toast.success('Code de parrainage généré !');
@@ -109,30 +106,14 @@ export default function LandingPage() {
   const { data: villages = [], error, refetch, isLoading } = useQuery<Village[]>({
     queryKey: ['villages'],
     queryFn: async () => {
-      // Use backend API for Redis caching - much faster on repeat visits
       const isDev = import.meta.env.DEV;
-      const API_BASE = import.meta.env.VITE_API_URL 
+      const API_BASE = import.meta.env.VITE_API_URL
         ? import.meta.env.VITE_API_URL
         : (isDev ? 'http://localhost:3000' : 'https://api.lecontinent.cm');
-      
-      try {
-        const response = await fetch(`${API_BASE}/api/content/villages`);
-        if (response.ok) {
-          const data = await response.json();
-          return data as Village[];
-        }
-        throw new Error('API response not ok');
-      } catch {
-        // Fallback to Supabase only if API fails
-        const { data, error } = await supabase
-          .from('villages')
-          .select('*')
-          .order('name', { ascending: true });
-        if (error) {
-          throw error;
-        }
-        return (data ?? []) as Village[];
-      }
+
+      const response = await fetch(`${API_BASE}/api/content/villages`);
+      if (!response.ok) throw new Error('Erreur de chargement des villages');
+      return (await response.json()) as Village[];
     },
     staleTime: 10 * 60 * 1000, // 10 minutes - villages don't change often
     gcTime: 60 * 60 * 1000, // 1 hour

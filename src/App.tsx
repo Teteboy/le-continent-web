@@ -87,7 +87,7 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 function GuestRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   if (loading) return <LoadingScreen />;
-  if (user) return <Navigate to="/cultures" replace />;
+  if (user) return <Navigate to="/cultures-premium" replace />;
   return <>{children}</>;
 }
 

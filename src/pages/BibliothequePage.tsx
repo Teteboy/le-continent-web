@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, BookOpen, ExternalLink, Crown, Lock, Loader2, FileText, ArrowRight, FileDown, Eye, AlertCircle, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/lib/supabase';
+import { contentApi } from '@/lib/api-client';
 import { useAuth } from '@/hooks/useAuth';
 import PaymentModal from '@/components/payment/PaymentModal';
 
@@ -25,77 +26,50 @@ export default function BibliothequePage() {
   const { user, profile } = useAuth();
   const isPremium = profile?.is_premium ?? false;
 
-  const [books, setBooks] = useState<CultureBook[]>([]);
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
-  const [selectedBook, setSelectedBook] = useState<CultureBook | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
-  const [loadingDetails, setLoadingDetails] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
-  const retryCount = useRef(0);
 
-  const fetchBooks = useCallback(async (isRetry = false) => {
-    try {
-      if (!isRetry) setLoading(true);
-      setFetchError(null);
-      const { data, error: err } = await supabase
-        .from('cultures_books')
-        .select('*')
-        .order('category', { ascending: true })
-        .order('created_at', { ascending: false });
+  // Fetch all books from backend API (with Redis caching)
+  const {
+    data: books = [],
+    isLoading,
+    error,
+    refetch,
+  } = useQuery<CultureBook[]>({
+    queryKey: ['bibliotheque-books', isPremium],
+    queryFn: async () => {
+      const response = await contentApi.get('cultures_books', {
+        limit: 1000,
+        isPremium: 'true', // always fetch all; frontend handles access gating
+        orderBy: 'category',
+        orderAsc: 'true',
+      });
 
-      if (err) throw err;
-      setBooks(data || []);
-      retryCount.current = 0;
-    } catch (err) {
-      console.error('Error fetching books:', err);
-      if (retryCount.current < 2) {
-        retryCount.current++;
-        setTimeout(() => fetchBooks(true), 1500 * retryCount.current);
-        return;
+      if (response.error) {
+        throw new Error(response.error as string);
       }
-      setFetchError('Impossible de charger la bibliothèque. Vérifiez votre connexion.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
-  // Fetch on mount + refetch when tab becomes visible (prevents stale/empty pages)
-  useEffect(() => {
-    fetchBooks();
+      const items = (response.items as CultureBook[]) || [];
+      // Sort by category then created_at desc client-side (server supports one orderBy)
+      items.sort((a, b) => {
+        const catCmp = (a.category || '').localeCompare(b.category || '');
+        if (catCmp !== 0) return catCmp;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+      return items;
+    },
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1500 * Math.pow(2, attempt), 10000),
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+  });
 
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        fetchBooks(true); // silent refetch
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [fetchBooks]);
+  // Derive selected book from the already-loaded books list (no extra API call)
+  const selectedBook = selectedBookId ? books.find((b) => b.id === selectedBookId) ?? null : null;
 
-  useEffect(() => {
-    if (selectedBookId) {
-      fetchBookDetails(selectedBookId);
-    }
-  }, [selectedBookId]);
-
-  const fetchBookDetails = async (bookId: string) => {
-    try {
-      setLoadingDetails(true);
-      const { data, error: err } = await supabase
-        .from('cultures_books')
-        .select('*')
-        .eq('id', bookId)
-        .single();
-
-      if (err) throw err;
-      setSelectedBook(data);
-    } catch (err) {
-      console.error('Error fetching book details:', err);
-    } finally {
-      setLoadingDetails(false);
-    }
-  };
+  const fetchError = error instanceof Error ? error.message : error ? 'Erreur inconnue' : null;
 
   // Group books by category
   const booksByCategory = books.reduce((acc, book) => {
@@ -113,7 +87,7 @@ export default function BibliothequePage() {
   const displayedBooksByCategory = Object.fromEntries(
     Object.entries(booksByCategory).map(([category, categoryBooks]) => [
       category,
-      isPremium ? categoryBooks : categoryBooks.slice(0, 3)
+      isPremium ? categoryBooks : categoryBooks.slice(0, 3),
     ])
   );
 
@@ -128,7 +102,6 @@ export default function BibliothequePage() {
 
   const handleCloseDetails = () => {
     setSelectedBookId(null);
-    setSelectedBook(null);
   };
 
   const handleUpgrade = () => {
@@ -139,7 +112,6 @@ export default function BibliothequePage() {
     setShowPayment(true);
   };
 
-  // Handle PDF/document opening
   const handleOpenPdf = () => {
     if (!selectedBook?.pdf_url) return;
     window.open(selectedBook.pdf_url, '_blank');
@@ -158,9 +130,9 @@ export default function BibliothequePage() {
     window.open(selectedBook.image_url, '_blank');
   };
 
-  // Show book details view
+  // ── Book Details View ──────────────────────────────────────────────────────
   if (selectedBookId) {
-    if (loadingDetails) {
+    if (!selectedBook && isLoading) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-[#F8F9FA]">
           <Loader2 size={40} className="text-[#8B0000] animate-spin" />
@@ -179,7 +151,6 @@ export default function BibliothequePage() {
       );
     }
 
-    // Determine what document to show
     const hasPdf = !!selectedBook.pdf_url;
     const hasImage = !!selectedBook.image_url;
     const documentUrl = selectedBook.pdf_url || selectedBook.image_url;
@@ -219,8 +190,8 @@ export default function BibliothequePage() {
                   Aperçu du document
                 </h3>
                 <div className="w-full h-96 rounded-xl bg-gray-100 overflow-hidden">
-                  <iframe 
-                    src={selectedBook.pdf_url} 
+                  <iframe
+                    src={selectedBook.pdf_url}
                     className="w-full h-full"
                     title={selectedBook.title}
                   />
@@ -242,12 +213,18 @@ export default function BibliothequePage() {
               </div>
             )}
 
-            {/* Badges */}
+            {/* Badges — reflect book type AND user account access */}
             <div className="flex items-center gap-2 mb-4">
               {selectedBook.is_premium ? (
-                <Badge className="bg-[#FFD700] text-[#8B0000]">
-                  <Crown size={9} fill="currentColor" /> Premium
-                </Badge>
+                isPremium ? (
+                  <Badge className="bg-[#27AE60] text-white">
+                    <Crown size={9} fill="currentColor" className="mr-1" /> Premium Débloqué
+                  </Badge>
+                ) : (
+                  <Badge className="bg-[#FFD700] text-[#8B0000]">
+                    <Crown size={9} fill="currentColor" className="mr-1" /> Premium
+                  </Badge>
+                )
               ) : (
                 <Badge className="bg-[#27AE60]/10 text-[#27AE60] border border-[#27AE60]/30">
                   Gratuit
@@ -268,7 +245,7 @@ export default function BibliothequePage() {
             {/* Author */}
             {selectedBook.author && (
               <p className="text-sm text-gray-500 mb-4">
-                <span className="font-semibold">Auteur:</span> {selectedBook.author}
+                <span className="font-semibold">Auteur :</span> {selectedBook.author}
               </p>
             )}
 
@@ -322,7 +299,6 @@ export default function BibliothequePage() {
                   )}
                   {!hasPdf && !hasImage && selectedBook.content && (
                     <Button
-                      onClick={() => {}}
                       className="bg-[#2980B9] hover:bg-[#1A6091] text-white font-bold"
                     >
                       <BookOpen size={16} className="mr-2" /> Lire le contenu
@@ -339,10 +315,10 @@ export default function BibliothequePage() {
                   onClick={handleUpgrade}
                   className="flex-1 bg-[#8B0000] hover:bg-[#6B0000] text-white font-bold h-12"
                 >
-                  <Lock size={16} className="mr-2" /> Débloquer (1,000 XAF)
+                  <Lock size={16} className="mr-2" /> Débloquer (1 000 XAF)
                 </Button>
               ) : null}
-              
+
               <Button
                 onClick={handleCloseDetails}
                 variant="outline"
@@ -358,13 +334,14 @@ export default function BibliothequePage() {
         <PaymentModal
           open={showPayment}
           onClose={() => setShowPayment(false)}
+          onSuccess={() => setShowPayment(false)}
         />
       </div>
     );
   }
 
-  // Show categories list
-  if (loading && books.length === 0) {
+  // ── Books List View ────────────────────────────────────────────────────────
+  if (isLoading && books.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F8F9FA]">
         <Loader2 size={40} className="text-[#8B0000] animate-spin" />
@@ -376,8 +353,8 @@ export default function BibliothequePage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#F8F9FA] gap-4 px-6 text-center">
         <AlertCircle size={48} className="text-red-500" />
-        <p className="text-gray-600">{fetchError}</p>
-        <Button onClick={() => { retryCount.current = 0; fetchBooks(); }} variant="outline" className="flex items-center gap-2">
+        <p className="text-gray-600">Impossible de charger la bibliothèque. Vérifiez votre connexion.</p>
+        <Button onClick={() => refetch()} variant="outline" className="flex items-center gap-2">
           <RefreshCw size={16} /> Réessayer
         </Button>
       </div>
@@ -427,7 +404,7 @@ export default function BibliothequePage() {
                     {booksByCategory[category].length}
                   </Badge>
                 </div>
-                
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {displayedBooksByCategory[category].map((book) => (
                     <div
@@ -446,10 +423,17 @@ export default function BibliothequePage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2">
                             <h3 className="font-bold text-[#2C3E50] text-base leading-tight line-clamp-2">{book.title}</h3>
+                            {/* Badge changes according to book type AND user account type */}
                             {book.is_premium ? (
-                              <Badge className="bg-[#FFD700] text-[#8B0000] shrink-0 text-[10px]">
-                                <Crown size={9} fill="currentColor" /> Premium
-                              </Badge>
+                              isPremium ? (
+                                <Badge className="bg-[#27AE60] text-white shrink-0 text-[10px] flex items-center gap-0.5">
+                                  <Crown size={9} fill="currentColor" /> Débloqué
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-[#FFD700] text-[#8B0000] shrink-0 text-[10px] flex items-center gap-0.5">
+                                  <Crown size={9} fill="currentColor" /> Premium
+                                </Badge>
+                              )
                             ) : (
                               <Badge className="bg-[#27AE60]/10 text-[#27AE60] border border-[#27AE60]/30 text-[10px] shrink-0">
                                 Gratuit
@@ -464,7 +448,7 @@ export default function BibliothequePage() {
                           )}
                         </div>
                       </div>
-                      
+
                       <div className="px-4 pb-3 flex items-center justify-end">
                         <ArrowRight size={16} className="text-[#2980B9]" />
                       </div>
@@ -516,12 +500,13 @@ export default function BibliothequePage() {
       <PaymentModal
         open={showPayment}
         onClose={() => setShowPayment(false)}
+        onSuccess={() => setShowPayment(false)}
       />
     </div>
   );
 }
 
-// Helper component for image icon
+// Helper SVG icon for image preview
 function ImageIcon({ size, className }: { size: number; className?: string }) {
   return (
     <svg

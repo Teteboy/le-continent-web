@@ -7,7 +7,6 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import PaymentModal from '@/components/payment/PaymentModal';
 
@@ -40,24 +39,9 @@ export default function CulturesPremiumPage() {
         ? import.meta.env.VITE_API_URL
         : (isDev ? 'http://localhost:3000' : 'https://api.lecontinent.cm');
       
-      // Try backend API first
-      try {
-        const response = await fetch(`${API_BASE}/api/content/villages`);
-        if (response.ok) {
-          const data = await response.json();
-          return data as Village[];
-        }
-      } catch {
-        // Fall through to Supabase fallback
-      }
-      
-      // Fallback to Supabase
-      const { data, error } = await supabase
-        .from('villages')
-        .select('*')
-        .order('name', { ascending: true });
-      if (error) throw error;
-      return (data ?? []) as Village[];
+      const response = await fetch(`${API_BASE}/api/content/villages`);
+      if (!response.ok) throw new Error('Erreur de chargement des villages');
+      return (await response.json()) as Village[];
     },
     staleTime: 10 * 60 * 1000, // 10 minutes - villages don't change often
     refetchInterval: false, // Disable auto-refresh

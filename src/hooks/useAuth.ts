@@ -1,6 +1,9 @@
-import { supabase, clearCache } from '../lib/supabase';
+import { clearCache } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useQueryClient } from '@tanstack/react-query';
+import { profileApi } from '../lib/api-client';
+import type { UserProfile } from '../types';
 
 /**
  * useAuth is a pure store selector — no side effects.
@@ -15,12 +18,9 @@ export function useAuth() {
 
   const fetchProfile = async (userId: string) => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-      if (!error && data) {
+      const response = await profileApi.get(userId);
+      const data = (response as { profile?: UserProfile }).profile;
+      if (data) {
         setProfile(data);
       }
     } catch (err) {
@@ -34,21 +34,21 @@ export function useAuth() {
     try {
       // Cancel all pending queries first - this is synchronous and fast
       queryClient.cancelQueries();
-      
+
       // Clear all query cache - synchronous operation
       queryClient.clear();
-      
+
       // Clear Supabase data cache as well
       clearCache();
-      
+
       // Reset the auth store immediately - this clears user, session, and profile
       // Do this FIRST before waiting for Supabase to avoid delays
       reset();
-      
+
       // Sign out from Supabase in the background - don't await
       // This makes logout instantaneous
       supabase.auth.signOut({ scope: 'global' }).catch(() => {});
-      
+
     } catch (err: unknown) {
       console.error('Logout error:', err);
       reset();

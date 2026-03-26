@@ -18,6 +18,9 @@ export interface UserProfile {
   referral_count: number;
   // Admin
   is_admin?: boolean;
+  // Password reset (internal fields)
+  reset_code?: string | null;
+  reset_code_expires?: string | null;
 }
 
 export interface PromoCode {

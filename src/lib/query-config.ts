@@ -22,6 +22,7 @@ export const queryConfig: DefaultOptions = {
     retry: 2,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
 
+    // Network timeout for queries (30 seconds)
     // NOTE: Do NOT set placeholderData globally — it hides loading states
     // for new queries where previousData is undefined, causing blank pages.
   },

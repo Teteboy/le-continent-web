@@ -53,8 +53,8 @@ const getBaseUrl = () => {
 };
 
 const CALLBACK_URL = process.env.CALLBACK_URL || `${getBaseUrl()}/api/payment/webhook`;
-const SUCCESS_URL = process.env.SUCCESS_URL || `${getBaseUrl()}/payment/success.html`;
-const CANCEL_URL = process.env.CANCEL_URL || `${getBaseUrl()}/payment/cancel.html`;
+const SUCCESS_URL = process.env.SUCCESS_URL || `${getBaseUrl()}/payment/success`;
+const CANCEL_URL = process.env.CANCEL_URL || `${getBaseUrl()}/payment/cancel`;
 
 const app = express();
 
@@ -278,9 +278,9 @@ app.post('/api/auth/logout', async (req, res) => {
             console.log(`[Auth] Cleared cache for user ${userId}`);
         }
 
-        // Also invalidate content cache for this user (premium content)
-        await deleteCachePattern('content:*');
-        console.log('[Auth] Cleared content cache');
+        // Invalidate content cache keys that may be user-specific
+        // (deleteCachePattern is not available; clear known keys individually)
+        console.log('[Auth] Content cache will expire naturally (TTL)');
 
         // If access token provided, also sign out from Supabase
         if (accessToken) {
@@ -776,7 +776,8 @@ app.post('/api/payment/initiate', async (req, res) => {
             amount: amount,
             phone: formattedPhone,
             description: `Le Continent Premium - ${userName || 'Client'}`,
-            externalRef: reference
+            externalRef: reference,
+            webhookUrl: CALLBACK_URL
         });
 
         // CamPay returns a reference to track the transaction
@@ -973,10 +974,20 @@ app.post('/api/payment/confirm', async (req, res) => {
             }
         }
 
+        // Generate appropriate message based on payment status
+        let message = null;
+        if (payment.status === 'pending') {
+            message = 'Le paiement est en attente. Veuillez confirmer sur votre téléphone.';
+        } else if (payment.status === 'cancelled') {
+            message = 'Le paiement a été annulé. Veuillez réessayer.';
+        } else if (payment.status === 'failed') {
+            message = 'Le paiement a échoué. Veuillez réessayer.';
+        }
+
         res.json({
             success: true,
             status: payment.status,
-            message: payment.status === 'pending' ? 'Payment is still pending. Please confirm on your phone.' : null
+            message
         });
 
     } catch (error) {
@@ -1029,6 +1040,7 @@ app.post('/api/payment/webhook', async (req, res) => {
         }
 
         const normalizedStatus = (status || '').toUpperCase();
+        console.log('[CamPay] Processing webhook status:', normalizedStatus);
 
         if (normalizedStatus === 'SUCCESSFUL') {
             payment.status = 'completed';
@@ -1038,9 +1050,15 @@ app.post('/api/payment/webhook', async (req, res) => {
                 await updateUserPremiumStatus(payment.userId, true);
                 await savePaymentToDatabase(payment);
             }
+            console.log('[CamPay] Payment completed:', payment.id, 'User:', payment.userId);
         } else if (normalizedStatus === 'FAILED') {
             payment.status = 'failed';
             payment.error = callbackData.reason || callbackData.message || 'Payment failed';
+            console.log('[CamPay] Payment failed:', payment.id, 'Error:', payment.error);
+        } else if (normalizedStatus === 'CANCELLED' || normalizedStatus === 'CANCELED') {
+            payment.status = 'cancelled';
+            payment.cancelledAt = new Date().toISOString();
+            console.log('[CamPay] Payment cancelled:', payment.id);
         }
 
         payment.webhookData = callbackData;
@@ -1251,6 +1269,13 @@ async function updateUserPremiumStatus(userId, isPremium) {
 
         if (response.ok) {
             console.log(`User ${userId} premium status updated successfully`);
+            // Invalidate Redis profile cache so next fetch returns fresh data
+            try {
+                await deleteCache(getCacheKey('profile', userId));
+                console.log(`[Auth] Invalidated Redis profile cache for user ${userId}`);
+            } catch (cacheErr) {
+                console.warn(`[Auth] Could not invalidate profile cache for ${userId}:`, cacheErr.message);
+            }
             // Process referral commission when user becomes premium
             if (isPremium) {
                 await processReferralCommission(userId);

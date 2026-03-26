@@ -11,7 +11,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL || 'https://dltkfjkodqpzmpuctnju.s
 const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsdGtmamtvZHFwem1wdWN0bmp1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDE2ODMyMSwiZXhwIjoyMDc5NzQ0MzIxfQ.Vz6yapqHN7NlI83izQiFGIf2L_8vegNMpl99r_yQxDw';
 
 // Valid tables for content
-const VALID_TABLES = ['lexique', 'alphabet', 'proverbes', 'histoires', 'mets', 'phrases'];
+const VALID_TABLES = ['lexique', 'alphabet', 'proverbes', 'histoires', 'mets', 'phrases', 'medicine_traditionnel', 'cultures_books'];
 
 /**
  * GET /api/content/villages
@@ -123,7 +123,9 @@ router.get('/:table', async (req, res) => {
         histoires: ['title', 'content'],
         mets: ['name', 'description'],
         phrases: ['content', 'french'],
-        alphabet: ['letter', 'name']
+        alphabet: ['letter', 'name'],
+        medicine_traditionnel: ['title', 'category', 'ingredients'],
+        cultures_books: ['title', 'author', 'description']
       };
       const columns = tableSearchColumns[table] || ['french'];
       const orFilter = columns.map(col => `${col}.ilike.*${searchTerm}*`).join(',');
@@ -157,7 +159,9 @@ router.get('/:table', async (req, res) => {
         histoires: ['title', 'content'],
         mets: ['name', 'description'],
         phrases: ['content', 'french'],
-        alphabet: ['letter', 'name']
+        alphabet: ['letter', 'name'],
+        medicine_traditionnel: ['title', 'category', 'ingredients'],
+        cultures_books: ['title', 'author', 'description']
       };
       const columns = tableSearchColumns[table] || ['french'];
       const orFilter = columns.map(col => `${col}.ilike.*${searchTerm}*`).join(',');

@@ -148,9 +148,9 @@ export default function LoginPage() {
       }
       
       toast.success('Connexion réussie ! Bienvenue 👋');
-      
-      // Navigate immediately - profile is already set in store above
-      navigate('/cultures');
+
+      // Navigate to premium cultures page after login
+      navigate('/cultures-premium');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erreur de connexion.';
       if (msg.includes('Invalid login credentials')) {

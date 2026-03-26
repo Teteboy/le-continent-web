@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Shield, Phone, Lock, Tag, Check, Loader2, X, MapPin, CreditCard, RefreshCw } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Shield, Phone, Lock, Tag, Check, Loader2, X, CreditCard, RefreshCw } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,40 +28,52 @@ function calcFinalPrice(code: PromoCode): number {
   return Math.max(0, ORIGINAL_PRICE - Math.floor(ORIGINAL_PRICE * code.discount_value / 100));
 }
 
-export default function PaymentModal({ open, onClose, onSuccess, userPhone }: Props) {
+export default function PaymentModal({ open, onClose, onSuccess }: Props) {
   const { user, profile } = useAuth();
   const setProfile = useAuthStore(state => state.setProfile);
   const queryClient = useQueryClient();
-  const [phone, setPhone] = useState('');
+  const navigate = useNavigate();
 
-  // Auto-fill phone when modal opens if user is logged in
-  useEffect(() => {
-    if (open && userPhone) {
-      setPhone(userPhone);
-    }
-  }, [open, userPhone]);
-  const [selectedMethod, setSelectedMethod] = useState<'mtn' | 'orange' | 'card' | ''>('');
+  // Phone is always empty when modal opens — user must enter their Mobile Money number
+  const [phone, setPhone] = useState('');
+  const [selectedMethod, setSelectedMethod] = useState<'mtn' | 'orange' | ''>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  
+
   // Payment state
   const [paymentId, setPaymentId] = useState<string | null>(null);
   const [ptn, setPtn] = useState<string | null>(null);
   const [isPolling, setIsPolling] = useState(false);
   const [showCheckAgain, setShowCheckAgain] = useState(false);
 
-  // Store pending payment in localStorage to check on app load
+  // Reset all payment state when modal opens/closes
+  useEffect(() => {
+    if (!open) {
+      // Reset everything when modal closes
+      setPhone('');
+      setSelectedMethod('');
+      setError('');
+      setPaymentId(null);
+      setPtn(null);
+      setIsPolling(false);
+      setShowCheckAgain(false);
+      setLoading(false);
+    }
+  }, [open]);
+
+  // Check for pending payments when user is available and modal is closed
   useEffect(() => {
     if (!open && user?.id) {
       checkPendingPayment();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, user?.id]);
 
   // Check for pending payments on app load or when modal opens
   const checkPendingPayment = useCallback(async () => {
     const storedPayment = localStorage.getItem('pending_payment');
     if (!storedPayment || !user?.id) return;
-    
+
     try {
       const payment = JSON.parse(storedPayment);
       // Only check if payment belongs to current user
@@ -68,30 +81,43 @@ export default function PaymentModal({ open, onClose, onSuccess, userPhone }: Pr
         localStorage.removeItem('pending_payment');
         return;
       }
-      
+
       const API_URL = import.meta.env.VITE_API_URL || 'https://api.lecontinent.cm';
       const response = await fetch(`${API_URL}/api/payment/confirm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paymentId: payment.paymentId, ptn: payment.ptn })
+        body: JSON.stringify({ paymentId: payment.paymentId, ptn: payment.ptn }),
       });
-      
+
       const data = await response.json();
-      
+
       if (data.status === 'completed') {
-        // Payment was completed!
-        toast.success('Paiement confirmé! Votre compte est maintenant Premium.');
         await refreshProfile();
         localStorage.removeItem('pending_payment');
-        // Show success state
         setPaymentId(payment.paymentId);
         setPtn(payment.ptn);
         setIsPolling(false);
         onSuccess?.();
-      } else if (data.status === 'failed' || data.status === 'cancelled') {
+        // Navigate to success page
+        navigate('/payment/success');
+      } else if (data.status === 'cancelled') {
         localStorage.removeItem('pending_payment');
+        toast.info('Paiement annulé', {
+          description: 'Le paiement a été annulé. Aucune somme n\'a été prélevée.',
+          duration: 5000,
+        });
+        // Navigate to cancel page
+        navigate('/payment/cancel');
+      } else if (data.status === 'failed') {
+        localStorage.removeItem('pending_payment');
+        toast.error('Paiement échoué', {
+          description: 'Le paiement a échoué. Veuillez réessayer.',
+          duration: 5000,
+        });
+        // Navigate to cancel page
+        navigate('/payment/cancel');
       } else {
-        // Still pending - offer to continue waiting
+        // Still pending — offer to continue waiting
         setPaymentId(payment.paymentId);
         setPtn(payment.ptn);
         setShowCheckAgain(true);
@@ -101,29 +127,37 @@ export default function PaymentModal({ open, onClose, onSuccess, userPhone }: Pr
     }
   }, [user?.id, onSuccess]);
 
-  // Save pending payment to localStorage when payment starts
+  /** Refresh the user profile in Zustand store + invalidate queries.
+   *  Retries up to 3 times with backoff to handle Supabase propagation lag. */
   const refreshProfile = async () => {
     if (!user?.id) return;
-    try {
-      // Invalidate all profile-related queries to force refetch
-      queryClient.invalidateQueries({ queryKey: ['profile'] });
-      queryClient.invalidateQueries({ queryKey: ['user'] });
-      
-      // Also directly fetch and update the store
-      const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-      if (data) {
-        setProfile(data);
+    queryClient.invalidateQueries({ queryKey: ['profile'] });
+    queryClient.invalidateQueries({ queryKey: ['user'] });
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        // Wait before retry (first attempt immediate, then 1s, 2s)
+        if (attempt > 0) await new Promise((r) => setTimeout(r, attempt * 1000));
+
+        const { data } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (data) {
+          setProfile(data);
+          // If premium status is now active, we're done
+          if (data.is_premium) return;
+        }
+      } catch (err) {
+        console.warn('[PaymentModal] Profile refresh attempt', attempt + 1, 'failed:', err);
       }
-    } catch (err) {
-      console.error('Error refreshing profile:', err);
     }
+    console.warn('[PaymentModal] Profile may not show premium yet; real-time sync will catch it shortly');
   };
 
-  // Increment promo used_count after successful payment
+  /** Increment promo code usage after successful payment */
   const incrementPromoUsage = async (promoCode: PromoCode) => {
     try {
       await supabase
@@ -156,19 +190,16 @@ export default function PaymentModal({ open, onClose, onSuccess, userPhone }: Pr
     setPromoError('');
 
     try {
-      // Use backend API with Redis caching instead of direct Supabase call
       const API_URL = import.meta.env.VITE_API_URL || 'https://api.lecontinent.cm';
       const response = await fetch(`${API_URL}/api/promo/validate/${encodeURIComponent(code)}`, {
         method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
       });
-      
-      if (!response.ok) {
-        throw new Error('Failed to validate promo code');
-      }
-      
+
+      if (!response.ok) throw new Error('Failed to validate promo code');
+
       const result = await response.json();
-      
+
       if (!result.valid || !result.promo) {
         setPromoError('Code invalide ou expiré');
         setAppliedPromo(null);
@@ -177,14 +208,12 @@ export default function PaymentModal({ open, onClose, onSuccess, userPhone }: Pr
 
       const pc = result.promo as PromoCode;
 
-      // Check expiration
       if (pc.expires_at && new Date(pc.expires_at) < new Date()) {
         setPromoError('Ce code promo a expiré');
         setAppliedPromo(null);
         return;
       }
 
-      // Check max uses
       if (pc.max_uses !== null && pc.used_count >= pc.max_uses) {
         setPromoError('Ce code promo a atteint sa limite d\'utilisation');
         setAppliedPromo(null);
@@ -193,7 +222,7 @@ export default function PaymentModal({ open, onClose, onSuccess, userPhone }: Pr
 
       setAppliedPromo(pc);
       toast.success(`Code promo "${code}" appliqué !`, {
-        description: `Réduction de ${pc.discount_type === 'percentage' ? `${pc.discount_value}%` : `${pc.discount_value} FCAFA`}`,
+        description: `Réduction de ${pc.discount_type === 'percentage' ? `${pc.discount_value}%` : `${pc.discount_value} FCFA`}`,
       });
     } catch {
       setPromoError('Erreur lors de la validation du code');
@@ -208,7 +237,7 @@ export default function PaymentModal({ open, onClose, onSuccess, userPhone }: Pr
     setPromoError('');
   };
 
-  // Cancel payment when user clicks Annuler
+  /** Cancel an in-progress payment on the backend */
   const cancelPayment = async () => {
     if (paymentId && isPolling) {
       try {
@@ -216,9 +245,8 @@ export default function PaymentModal({ open, onClose, onSuccess, userPhone }: Pr
         await fetch(`${API_URL}/api/payment/cancel`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ paymentId })
+          body: JSON.stringify({ paymentId }),
         });
-        // Clear pending payment from localStorage
         localStorage.removeItem('pending_payment');
       } catch (err) {
         console.error('Error cancelling payment:', err);
@@ -228,7 +256,7 @@ export default function PaymentModal({ open, onClose, onSuccess, userPhone }: Pr
 
   const handlePay = async () => {
     if (!phone.trim() || !selectedMethod) {
-      setError('Veuillez entrer votre numéro de téléphone');
+      setError('Veuillez entrer votre numéro de téléphone et choisir un opérateur');
       return;
     }
 
@@ -236,12 +264,8 @@ export default function PaymentModal({ open, onClose, onSuccess, userPhone }: Pr
     setLoading(true);
 
     try {
-      // Determine API URL based on environment
-      // Use VITE_API_URL if set, otherwise use production API
       const API_URL = import.meta.env.VITE_API_URL || 'https://api.lecontinent.cm';
-      
 
-      
       const response = await fetch(`${API_URL}/api/payment/initiate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -251,43 +275,39 @@ export default function PaymentModal({ open, onClose, onSuccess, userPhone }: Pr
           method: selectedMethod,
           userId: user?.id,
           userEmail: user?.email,
-          userName: profile ? `${profile.first_name} ${profile.last_name}`.trim() : undefined
-        })
+          userName: profile ? `${profile.first_name} ${profile.last_name}`.trim() : undefined,
+        }),
       });
 
       const data = await response.json();
 
       if (data.success && data.ptn) {
-        // CamPay payment initiated - user needs to confirm on phone
-        toast.success('Paiement initiated!', {
+        toast.success('Paiement initié !', {
           description: 'Veuillez confirmer le paiement sur votre téléphone',
-          duration: 5000
+          duration: 5000,
         });
-        
-        // Store payment info for manual retry AND in localStorage for background checking
+
         setPaymentId(data.paymentId);
         setPtn(data.ptn);
         setIsPolling(true);
         setShowCheckAgain(false);
-        
-        // Save to localStorage so we can check status even if user navigates away
+
+        // Persist payment info so we can resume checking if user navigates away
         localStorage.setItem('pending_payment', JSON.stringify({
           paymentId: data.paymentId,
           ptn: data.ptn,
           userId: user?.id,
           method: selectedMethod,
           amount: finalPrice,
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
         }));
-        setPtn(data.ptn);
-        setIsPolling(true);
-        setShowCheckAgain(false);
+
         setLoading(false);
-        
-        // Poll for payment status - increased to 120 seconds (60 attempts * 2s)
+
+        // Poll every 2 seconds for up to 120 seconds (60 attempts)
         let attempts = 0;
-        const maxAttempts = 60; // 120 seconds total
-        
+        const maxAttempts = 60;
+
         const checkStatus = async () => {
           if (attempts >= maxAttempts) {
             setIsPolling(false);
@@ -295,35 +315,42 @@ export default function PaymentModal({ open, onClose, onSuccess, userPhone }: Pr
             setError('Le temps d\'attente est écoulé. Cliquez sur "Vérifier" pour continuer à attendre, ou contactez le support.');
             return;
           }
-          
+
           try {
             const statusResponse = await fetch(`${API_URL}/api/payment/confirm`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ paymentId: data.paymentId, ptn: data.ptn })
+              body: JSON.stringify({ paymentId: data.paymentId, ptn: data.ptn }),
             });
-            
+
             const statusData = await statusResponse.json();
-            
+
             if (statusData.status === 'completed') {
               setIsPolling(false);
-              toast.success('Paiement confirmé!');
               if (appliedPromo) await incrementPromoUsage(appliedPromo);
-              refreshProfile();
-              // Clear pending payment from localStorage
+              // AWAIT profile refresh so premium status is set before close
+              await refreshProfile();
               localStorage.removeItem('pending_payment');
               onSuccess?.();
               onClose();
+              // Navigate to success page
+              navigate('/payment/success');
+            } else if (statusData.status === 'cancelled') {
+              setIsPolling(false);
+              localStorage.removeItem('pending_payment');
+              onClose();
+              // Navigate to cancel page
+              navigate('/payment/cancel');
             } else if (statusData.status === 'failed') {
               setIsPolling(false);
-              setError(statusData.message || 'Le paiement a échoué');
-              // Clear pending payment from localStorage
               localStorage.removeItem('pending_payment');
+              onClose();
+              // Navigate to cancel page (same as cancelled)
+              navigate('/payment/cancel');
             } else {
               attempts++;
-              // Show progress toast
               if (attempts % 5 === 0) {
-                toast.info(`En attente... ${attempts * 2}s écoulées`, { duration: 1000 });
+                toast.info(`En attente de confirmation... (${attempts * 2}s)`, { duration: 1000 });
               }
               setTimeout(checkStatus, 2000);
             }
@@ -332,32 +359,39 @@ export default function PaymentModal({ open, onClose, onSuccess, userPhone }: Pr
             setTimeout(checkStatus, 2000);
           }
         };
-        
-        // Start polling after 3 seconds
+
+        // Start polling after 3 seconds (give user time to confirm on phone)
         setTimeout(checkStatus, 3000);
-        
+
       } else if (data.success && data.checkoutUrl) {
         // Paydunya-style checkout URL (fallback)
         window.location.href = data.checkoutUrl;
       } else {
         setError(data.error || 'Erreur lors de l\'initialisation du paiement');
+        setLoading(false);
       }
     } catch (err) {
       console.error('Payment error:', err);
       setError('Erreur de connexion. Veuillez réessayer.');
-    } finally {
-      // Don't set loading false here if we're polling
+      setLoading(false);
     }
   };
 
   const handleClose = async () => {
-    // Cancel payment if polling
-    if (paymentId && isPolling) {
+    // Notify user if closing while a payment is in progress (polling or waiting for manual check)
+    const wasPolling = !!(paymentId && (isPolling || showCheckAgain));
+    if (wasPolling) {
       await cancelPayment();
+      toast.info('Transaction annulée', {
+        description: 'Aucune somme n\'a été prélevée sur votre compte.',
+        duration: 4000,
+      });
     }
-    
+
+    // Reset all state
     setError('');
     setSelectedMethod('');
+    setPhone('');
     setPromoInput('');
     setAppliedPromo(null);
     setPromoError('');
@@ -365,55 +399,60 @@ export default function PaymentModal({ open, onClose, onSuccess, userPhone }: Pr
     setPtn(null);
     setIsPolling(false);
     setShowCheckAgain(false);
-    // Clear pending payment from localStorage
+    setLoading(false);
     localStorage.removeItem('pending_payment');
     onClose();
   };
 
-  // Manual check payment status (for retry after timeout)
+  /** Manual re-check after polling timeout */
   const handleCheckAgain = async () => {
     if (!paymentId || !ptn) return;
-    
+
     setLoading(true);
     setError('');
     setIsPolling(true);
-    
+
+    const API_URL = import.meta.env.VITE_API_URL || 'https://api.lecontinent.cm';
+
     try {
-      // Use same API URL as initial payment
-      const API_URL = import.meta.env.VITE_API_URL || 'https://api.lecontinent.cm';
-      
       const statusResponse = await fetch(`${API_URL}/api/payment/confirm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paymentId, ptn })
+        body: JSON.stringify({ paymentId, ptn }),
       });
-      
+
       const statusData = await statusResponse.json();
-      
+
       if (statusData.status === 'completed') {
-        toast.success('Paiement confirmé!');
         if (appliedPromo) await incrementPromoUsage(appliedPromo);
-        refreshProfile();
-        // Clear pending payment from localStorage
+        await refreshProfile();
         localStorage.removeItem('pending_payment');
         onSuccess?.();
         onClose();
+        navigate('/payment/success');
+      } else if (statusData.status === 'cancelled') {
+        setIsPolling(false);
+        setShowCheckAgain(false);
+        localStorage.removeItem('pending_payment');
+        setLoading(false);
+        onClose();
+        navigate('/payment/cancel');
       } else if (statusData.status === 'failed') {
         setIsPolling(false);
-        setError(statusData.message || 'Le paiement a échoué');
-        // Clear pending payment from localStorage
-        localStorage.removeItem('pending_payment');
         setShowCheckAgain(false);
+        localStorage.removeItem('pending_payment');
+        setLoading(false);
+        onClose();
+        navigate('/payment/cancel');
       } else {
-        // Continue polling
+        // Still pending — continue polling for 60 more seconds
         setIsPolling(true);
         setShowCheckAgain(false);
         setLoading(false);
-        
-        // Continue polling for up to 60 more seconds
+
         let attempts = 0;
         const maxAttempts = 30;
-        
+
         const continuePolling = async () => {
           if (attempts >= maxAttempts) {
             setIsPolling(false);
@@ -421,30 +460,33 @@ export default function PaymentModal({ open, onClose, onSuccess, userPhone }: Pr
             setError('Le paiement prend plus de temps que prévu. Veuillez réessayer plus tard ou contacter le support.');
             return;
           }
-          
+
           try {
-            const response = await fetch(`${API_URL}/api/payment/confirm`, {
+            const res = await fetch(`${API_URL}/api/payment/confirm`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ paymentId, ptn })
+              body: JSON.stringify({ paymentId, ptn }),
             });
-            
-            const data = await response.json();
-            
-            if (data.status === 'completed') {
+            const resData = await res.json();
+
+            if (resData.status === 'completed') {
               setIsPolling(false);
-              toast.success('Paiement confirmé!');
               if (appliedPromo) await incrementPromoUsage(appliedPromo);
-              refreshProfile();
-              // Clear pending payment from localStorage
+              await refreshProfile();
               localStorage.removeItem('pending_payment');
               onSuccess?.();
               onClose();
-            } else if (data.status === 'failed') {
+              navigate('/payment/success');
+            } else if (resData.status === 'cancelled') {
               setIsPolling(false);
-              setError(data.message || 'Le paiement a échoué');
-              // Clear pending payment from localStorage
               localStorage.removeItem('pending_payment');
+              onClose();
+              navigate('/payment/cancel');
+            } else if (resData.status === 'failed') {
+              setIsPolling(false);
+              localStorage.removeItem('pending_payment');
+              onClose();
+              navigate('/payment/cancel');
             } else {
               attempts++;
               setTimeout(continuePolling, 2000);
@@ -454,7 +496,7 @@ export default function PaymentModal({ open, onClose, onSuccess, userPhone }: Pr
             setTimeout(continuePolling, 2000);
           }
         };
-        
+
         setTimeout(continuePolling, 2000);
       }
     } catch (err) {
@@ -481,10 +523,10 @@ export default function PaymentModal({ open, onClose, onSuccess, userPhone }: Pr
             <p className="text-xs text-gray-500">Montant à payer</p>
             <div className="flex items-center justify-center gap-2">
               <span className="text-gray-400 line-through text-sm">
-                {appliedPromo ? `${ORIGINAL_PRICE.toLocaleString('fr-FR')} FCAFA` : '2 000FCAFA'}
+                {appliedPromo ? `${ORIGINAL_PRICE.toLocaleString('fr-FR')} FCFA` : '2 000 FCFA'}
               </span>
               <span className="text-2xl font-black text-[#27AE60]">
-                {finalPrice.toLocaleString('fr-FR')} FCAFA
+                {finalPrice.toLocaleString('fr-FR')} FCFA
               </span>
               {appliedPromo ? (
                 <Badge className="bg-[#27AE60] text-white font-bold text-xs">
@@ -497,7 +539,7 @@ export default function PaymentModal({ open, onClose, onSuccess, userPhone }: Pr
             <p className="text-[10px] text-gray-400">Accès à vie · Paiement unique</p>
           </div>
 
-          {/* Phone input */}
+          {/* Phone input — always empty, user must type their Mobile Money number */}
           <div>
             <Label className="text-[#8B0000] font-semibold text-sm">Numéro Mobile Money</Label>
             <div className="flex items-center gap-2 mt-1">
@@ -507,8 +549,11 @@ export default function PaymentModal({ open, onClose, onSuccess, userPhone }: Pr
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 className="border-[#8B0000]/40 focus-visible:ring-[#8B0000] h-9"
+                type="tel"
+                autoComplete="tel"
               />
             </div>
+            <p className="text-[10px] text-gray-400 mt-1">Entrez le numéro à débiter pour ce paiement</p>
           </div>
 
           {/* Payment methods */}
@@ -536,22 +581,14 @@ export default function PaymentModal({ open, onClose, onSuccess, userPhone }: Pr
             </div>
           </div>
 
-          {/* Notice */}
+          {/* Security notice */}
           <div className="bg-green-50 border border-green-200 rounded-lg p-2 text-[10px] text-green-700">
             <p className="font-semibold">✅ Paiement sécurisé via MTN et Orange</p>
           </div>
 
+          {/* Error */}
           {error && (
-            <div className="space-y-2">
-              <p className="text-red-600 text-sm font-medium">{error}</p>
-              <div className="flex items-start gap-2 p-3 bg-gray-50 rounded-lg">
-                <MapPin size={16} className="text-[#8B0000] mt-0.5 shrink-0" />
-                <div className="text-sm text-gray-600">
-                  <p className="font-medium text-gray-800">Awae Laverie, Yaoundé</p>
-                  <p className="text-xs text-gray-500">Cameroun</p>
-                </div>
-              </div>
-            </div>
+            <p className="text-red-600 text-sm font-medium">{error}</p>
           )}
 
           {/* Polling status indicator */}
@@ -594,7 +631,7 @@ export default function PaymentModal({ open, onClose, onSuccess, userPhone }: Pr
             </Button>
             <Button
               onClick={handlePay}
-              disabled={loading || !selectedMethod || !phone.trim()}
+              disabled={loading || isPolling || !selectedMethod || !phone.trim()}
               className="flex-1 bg-[#27AE60] hover:bg-[#219A52] text-white font-bold h-9 text-sm"
             >
               {loading ? (
@@ -610,7 +647,7 @@ export default function PaymentModal({ open, onClose, onSuccess, userPhone }: Pr
             </Button>
           </div>
 
-          {/* Promo Code Section - Below buttons */}
+          {/* Promo Code Section */}
           <div className="bg-[#27AE60]/5 border border-[#27AE60]/20 rounded-lg p-2.5">
             <Label className="text-[#27AE60] font-semibold text-xs flex items-center gap-1 mb-1.5">
               <Tag size={11} /> Code promo (optionnel)

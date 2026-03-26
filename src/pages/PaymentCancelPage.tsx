@@ -1,11 +1,18 @@
 import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { X } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function PaymentCancelPage() {
-  // Clean up any pending payment data on mount
+  // Clean up any pending payment data on mount and show notification
   useEffect(() => {
     localStorage.removeItem('pending_payment');
+    
+    // Show cancel notification to user
+    toast.info('Paiement annulé', {
+      description: 'Aucune somme n\'a été prélevée sur votre compte. Vous pouvez réessayer à tout moment.',
+      duration: 5000,
+    });
   }, []);
 
   return (

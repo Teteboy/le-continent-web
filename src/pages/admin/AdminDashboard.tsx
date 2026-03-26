@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Globe, Tag, UsersRound, Database,
-  LogOut, Menu, X, Shield, ChevronRight, Table2,
+  LogOut, Menu, X, Shield, ChevronRight, Table2, CreditCard,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -14,11 +14,12 @@ import PromoCodesSection from './sections/PromoCodesSection';
 import ReferralsSection from './sections/ReferralsSection';
 import SetupGuideSection from './sections/SetupGuideSection';
 import DataSection from './sections/DataSection';
+import PaymentsSection from './sections/PaymentsSection';
 
 /** Main site URL — set VITE_MAIN_SITE_URL in your hosting env for the admin subdomain */
 const MAIN_SITE_URL = import.meta.env.VITE_MAIN_SITE_URL || '/';
 
-type AdminSection = 'overview' | 'users' | 'villages' | 'promo-codes' | 'referrals' | 'data' | 'setup';
+type AdminSection = 'overview' | 'users' | 'villages' | 'promo-codes' | 'referrals' | 'payments' | 'data' | 'setup';
 
 interface NavItem {
   id: AdminSection;
@@ -33,6 +34,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'villages',    label: 'Villages / Cultures', icon: <Globe size={18} /> },
   { id: 'promo-codes', label: 'Codes Promo',         icon: <Tag size={18} />, badge: 'NEW' },
   { id: 'referrals',   label: 'Parrainages',         icon: <UsersRound size={18} /> },
+  { id: 'payments',    label: 'Paiements',           icon: <CreditCard size={18} /> },
   { id: 'data',        label: 'Éditeur de données',  icon: <Table2 size={18} />, badge: 'SQL' },
   { id: 'setup',       label: 'Configuration SQL',   icon: <Database size={18} /> },
 ];
@@ -228,6 +230,7 @@ export default function AdminDashboard() {
           {activeSection === 'villages'    && <VillagesSection />}
           {activeSection === 'promo-codes' && <PromoCodesSection />}
           {activeSection === 'referrals'   && <ReferralsSection />}
+          {activeSection === 'payments'    && <PaymentsSection />}
           {activeSection === 'data'        && <DataSection />}
           {activeSection === 'setup'       && <SetupGuideSection />}
         </main>

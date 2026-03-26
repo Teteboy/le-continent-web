@@ -20,16 +20,16 @@ const PAGE_SIZE = 25;
 const READONLY_COLS = new Set(['id', 'created_at', 'updated_at']);
 
 const TABLES = [
-  { name: 'alphabet',       label: 'Alphabet',         emoji: '🔤' },
-  { name: 'cultures_books', label: 'Livres & Cultures', emoji: '📚' },
-  { name: 'histoires',      label: 'Histoires',         emoji: '📖' },
-  { name: 'lexique',        label: 'Lexique',           emoji: '📝' },
-  { name: 'mets',           label: 'Mets',              emoji: '🍽️' },
-  { name: 'phrases',        label: 'Phrases',           emoji: '💬' },
-  { name: 'proverbes',      label: 'Proverbes',         emoji: '✨' },
-  { name: 'subscriptions',  label: 'Abonnements',       emoji: '💳' },
-  { name: 'transactions',   label: 'Transactions',      emoji: '💰' },
-  { name: 'villages',       label: 'Villages',          emoji: '🏘️' },
+  { name: 'alphabet',               label: 'Alphabet',           emoji: '🔤' },
+  { name: 'cultures_books',         label: 'Livres & Cultures',  emoji: '📚' },
+  { name: 'histoires',              label: 'Histoires',           emoji: '📖' },
+  { name: 'lexique',                label: 'Lexique',             emoji: '📝' },
+  { name: 'medicine_traditionnel',  label: 'Médecine Trad.',      emoji: '🌿' },
+  { name: 'mets',                   label: 'Mets',                emoji: '🍽️' },
+  { name: 'payments',               label: 'Paiements',           emoji: '💳' },
+  { name: 'phrases',                label: 'Phrases',             emoji: '💬' },
+  { name: 'proverbes',              label: 'Proverbes',           emoji: '✨' },
+  { name: 'villages',               label: 'Villages',            emoji: '🏘️' },
 ] as const;
 
 type TableName = typeof TABLES[number]['name'];

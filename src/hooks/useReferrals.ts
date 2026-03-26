@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
+import { referralApi } from '@/lib/api-client';
 import type { ReferralRecord } from '@/types';
 
 export function useReferrals(userId: string | undefined) {
@@ -7,33 +7,29 @@ export function useReferrals(userId: string | undefined) {
     queryKey: ['referrals', userId],
     queryFn: async () => {
       if (!userId) return [];
-      
+
       try {
         console.log('[useReferrals] Fetching referrals for user:', userId);
-        const { data, error } = await supabase
-          .from('referrals')
-          .select('*')
-          .eq('referrer_id', userId)
-          .order('created_at', { ascending: false });
+        const response = await referralApi.list(userId);
 
-        if (error) {
-          console.error('[useReferrals] Supabase error:', error.message);
+        if (response.error) {
+          console.error('[useReferrals] API error:', response.error);
           return [];
         }
-        
-        console.log('[useReferrals] Found referrals:', data?.length ?? 0);
-        return (data ?? []) as ReferralRecord[];
+
+        const referrals = (response as { referrals?: ReferralRecord[] }).referrals ?? [];
+        console.log('[useReferrals] Found referrals:', referrals.length);
+        return referrals as ReferralRecord[];
       } catch (err) {
         console.error('[useReferrals] Exception:', err);
         return [];
       }
     },
     enabled: !!userId,
-    staleTime: 5 * 60 * 1000, // 5 minutes - prevent constant refetching
-    refetchInterval: false, // Disable auto-refresh
-    refetchOnWindowFocus: false, // Disable refetch on window focus
-    retry: 1, // Only retry once
-    retryDelay: 500,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchInterval: false,
+    refetchOnWindowFocus: true,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * Math.pow(2, attempt), 5000),
   });
 }
-

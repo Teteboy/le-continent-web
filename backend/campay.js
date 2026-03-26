@@ -75,9 +75,10 @@ async function getToken() {
  * @param {string} params.phone - Phone number in format 2376XXXXXXXX
  * @param {string} params.description - Payment description
  * @param {string} [params.externalRef] - Optional external reference
+ * @param {string} [params.webhookUrl] - Optional webhook URL for status callbacks
  * @returns {Object} CamPay collect response with reference for status tracking
  */
-async function collectPayment({ amount, phone, description, externalRef }) {
+async function collectPayment({ amount, phone, description, externalRef, webhookUrl }) {
     const token = await getToken();
 
     console.log(`[CamPay] Initiating collect: ${amount} XAF to ${phone}`);
@@ -87,7 +88,8 @@ async function collectPayment({ amount, phone, description, externalRef }) {
         currency: 'XAF',
         from: phone,
         description: description || 'Le Continent Premium',
-        external_reference: externalRef || undefined
+        external_reference: externalRef || undefined,
+        webhook_url: webhookUrl || undefined
     };
 
     const response = await fetchWithTimeout(`${CAMPAY_BASE_URL}/api/collect/`, {

@@ -1,9 +1,11 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Heart, Lock, Loader2, ChevronDown, ChevronUp, AlertCircle, RefreshCw } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { ArrowLeft, Heart, Lock, Loader2, ChevronDown, ChevronUp, AlertCircle, RefreshCw, Crown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/lib/supabase';
+import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
+import { contentApi } from '@/lib/api-client';
 import PaymentModal from '@/components/payment/PaymentModal';
 
 // Helper to format text with proper line breaks
@@ -24,7 +26,6 @@ interface MedicineRemedy {
   display_order: number;
 }
 
-// Free category - Anemia/Blood production
 export default function MedecineTraditionnellePage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -40,52 +41,46 @@ export default function MedecineTraditionnellePage() {
     village = null;
   }
 
-  const [remedies, setRemedies] = useState<MedicineRemedy[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
   const [showPayment, setShowPayment] = useState(false);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
-  const retryCount = useRef(0);
 
-  const fetchRemedies = useCallback(async (isRetry = false) => {
-    try {
-      if (!isRetry) setLoading(true);
-      setFetchError(null);
-      const { data, error } = await supabase
-        .from('medicine_traditionnel')
-        .select('*')
-        .order('category', { ascending: true })
-        .order('display_order', { ascending: true });
+  // Fetch from backend API (with Redis caching)
+  const {
+    data: remedies = [],
+    isLoading,
+    error,
+    refetch,
+  } = useQuery<MedicineRemedy[]>({
+    queryKey: ['medicine-traditionnelle', isPremium],
+    queryFn: async () => {
+      const response = await contentApi.get('medicine_traditionnel', {
+        limit: 1000,
+        isPremium: 'true', // always fetch all; frontend handles access gating
+        orderBy: 'category',
+        orderAsc: 'true',
+      });
 
-      if (error) throw error;
-      setRemedies(data || []);
-      retryCount.current = 0;
-    } catch (err) {
-      console.error('Error fetching remedies:', err);
-      // Auto-retry up to 2 times
-      if (retryCount.current < 2) {
-        retryCount.current++;
-        setTimeout(() => fetchRemedies(true), 1500 * retryCount.current);
-        return;
+      if (response.error) {
+        throw new Error(response.error as string);
       }
-      setFetchError('Impossible de charger les remèdes. Vérifiez votre connexion.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
-  // Fetch on mount + refetch when tab becomes visible again (prevents stale/empty pages)
-  useEffect(() => {
-    fetchRemedies();
+      const items = (response.items as MedicineRemedy[]) || [];
+      // Sort by display_order within each category (server only orders by one column)
+      items.sort((a, b) => {
+        if (a.category !== b.category) return a.category.localeCompare(b.category);
+        return (a.display_order || 0) - (b.display_order || 0);
+      });
+      return items;
+    },
+    staleTime: 10 * 60 * 1000,   // 10 minutes
+    gcTime: 30 * 60 * 1000,       // 30 minutes
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1500 * Math.pow(2, attempt), 10000),
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+  });
 
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        fetchRemedies(true); // silent refetch
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [fetchRemedies]);
+  const fetchError = error instanceof Error ? error.message : error ? 'Erreur inconnue' : null;
 
   // Group remedies by category
   const remediesByCategory = remedies.reduce((acc, remedy) => {
@@ -98,16 +93,7 @@ export default function MedecineTraditionnellePage() {
 
   const categories = Object.keys(remediesByCategory).sort();
 
-  // For free users, show all categories but only 1 remedy per category
-  // For premium users, show all categories with all remedies
-  const displayedCategories = categories;
-
   const toggleCategory = (category: string) => {
-    if (!isPremium) {
-      // For free users, show payment when trying to expand other categories
-      // They can see the categories but need to expand to see content
-      // Actually, let's allow them to expand but the remedies will be locked
-    }
     setExpandedCategory(expandedCategory === category ? null : category);
   };
 
@@ -127,17 +113,13 @@ export default function MedecineTraditionnellePage() {
     setShowPayment(true);
   };
 
-  // Check if a remedy should be locked
-  // Free users: first remedy in each category is free (display_order = 1)
-  // Premium users: all remedies are unlocked
+  // Free users get the first remedy (display_order = 1) in each category for free
   const isRemedyLocked = (remedy: MedicineRemedy): boolean => {
     if (isPremium) return false;
-    // Free users get the first remedy (display_order = 1) in each category for free
-    if (remedy.display_order === 1) return false;
-    return true;
+    return remedy.display_order !== 1;
   };
 
-  if (loading && remedies.length === 0) {
+  if (isLoading && remedies.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F8F9FA]">
         <Loader2 size={40} className="text-[#8B0000] animate-spin" />
@@ -149,8 +131,8 @@ export default function MedecineTraditionnellePage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#F8F9FA] gap-4 px-6 text-center">
         <AlertCircle size={48} className="text-red-500" />
-        <p className="text-gray-600">{fetchError}</p>
-        <Button onClick={() => { retryCount.current = 0; fetchRemedies(); }} variant="outline" className="flex items-center gap-2">
+        <p className="text-gray-600">Impossible de charger les remèdes. Vérifiez votre connexion.</p>
+        <Button onClick={() => refetch()} variant="outline" className="flex items-center gap-2">
           <RefreshCw size={16} /> Réessayer
         </Button>
       </div>
@@ -189,7 +171,7 @@ export default function MedecineTraditionnellePage() {
         {!isPremium && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
             <p className="text-amber-800 text-sm">
-              🔓 <strong>1remède gratuit par catégorie:</strong> Débloquez le premier remède de chaque catégorie
+              🔓 <strong>1 remède gratuit par catégorie :</strong> Débloquez le premier remède de chaque catégorie
             </p>
             <p className="text-amber-700 text-xs mt-1">
               Passez à Premium pour accéder à tous les remèdes (Cœur, Diabète, Detox, Peau, etc.)
@@ -198,7 +180,7 @@ export default function MedecineTraditionnellePage() {
         )}
 
         {/* Categories */}
-        {displayedCategories.map((category) => (
+        {categories.map((category) => (
           <div key={category} className="mb-6">
             {/* Category Header */}
             <button
@@ -217,7 +199,16 @@ export default function MedecineTraditionnellePage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {/* Lock icon shown per-remedy based on isRemedyLocked */}
+                {/* Badge reflects user account type */}
+                {isPremium ? (
+                  <Badge className="bg-[#27AE60] text-white text-[10px] flex items-center gap-1">
+                    <Crown size={9} fill="currentColor" /> Complet
+                  </Badge>
+                ) : (
+                  <Badge className="bg-amber-100 text-amber-700 border border-amber-200 text-[10px]">
+                    1 Gratuit
+                  </Badge>
+                )}
                 {expandedCategory === category ? (
                   <ChevronUp size={20} className="text-gray-400" />
                 ) : (
@@ -241,14 +232,12 @@ export default function MedecineTraditionnellePage() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1">
                           <h3 className={`font-bold text-[#2C3E50] mb-2 ${locked ? 'blur-sm select-none' : ''}`}>{remedy.title}</h3>
-                          
-                          {/* Ingredients - hidden for locked */}
+
                           <div className="mb-2">
                             <p className={`text-xs font-semibold text-gray-500 uppercase mb-1 ${locked ? 'blur-sm select-none' : ''}`}>Ingrédients</p>
                             <p className={`text-sm text-gray-700 whitespace-pre-line ${locked ? 'blur-sm select-none' : ''}`}>{formatText(remedy.ingredients)}</p>
                           </div>
 
-                          {/* Proportion */}
                           {remedy.proportion && (
                             <div className="mb-2">
                               <p className={`text-xs font-semibold text-gray-500 uppercase mb-1 ${locked ? 'blur-sm select-none' : ''}`}>Proportion</p>
@@ -256,13 +245,11 @@ export default function MedecineTraditionnellePage() {
                             </div>
                           )}
 
-                          {/* Bienfaits */}
                           <div className="mb-2">
                             <p className={`text-xs font-semibold text-gray-500 uppercase mb-1 ${locked ? 'blur-sm select-none' : ''}`}>Bienfaits</p>
                             <p className={`text-sm text-gray-700 whitespace-pre-line ${locked ? 'blur-sm select-none' : ''}`}>{formatText(remedy.bienfats)}</p>
                           </div>
 
-                          {/* Posologie */}
                           <div className="mb-2">
                             <p className={`text-xs font-semibold text-gray-500 uppercase mb-1 ${locked ? 'blur-sm select-none' : ''}`}>Posologie</p>
                             <p className={`text-sm text-[#8B0000] font-semibold ${locked ? 'blur-sm select-none' : ''}`}>{remedy.posologie}</p>
@@ -295,14 +282,14 @@ export default function MedecineTraditionnellePage() {
           </div>
         ))}
 
-        {/* Show upgrade prompt for free users when not in free category */}
+        {/* Upgrade prompt for free users */}
         {!isPremium && categories.length > 1 && (
           <div className="mt-8 bg-gradient-to-r from-[#8B0000] to-[#A52A2A] rounded-2xl p-6 text-center">
             <h3 className="text-white font-bold text-lg mb-2">
               🔓 Débloquez toutes les catégories
             </h3>
             <p className="text-white/80 text-sm mb-4">
-              Accédez à tous les remèdes pour le cœur, le diabète, la detox, la peau, et bien plus encore!
+              Accédez à tous les remèdes pour le cœur, le diabète, la detox, la peau, et bien plus encore !
             </p>
             <Button
               onClick={handleUpgrade}
@@ -315,9 +302,10 @@ export default function MedecineTraditionnellePage() {
       </div>
 
       {/* Payment Modal */}
-      <PaymentModal 
-        open={showPayment} 
-        onClose={() => setShowPayment(false)} 
+      <PaymentModal
+        open={showPayment}
+        onClose={() => setShowPayment(false)}
+        onSuccess={() => setShowPayment(false)}
       />
     </div>
   );

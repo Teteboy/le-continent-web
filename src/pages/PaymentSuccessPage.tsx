@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Check, Crown, Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useAuthStore } from '@/store/authStore';
-import { supabase } from '@/lib/supabase';
+import { profileApi } from '@/lib/api-client';
+import { toast } from 'sonner';
+import type { UserProfile } from '@/types';
 
 export default function PaymentSuccessPage() {
   const { user, profile } = useAuth();
   const setProfile = useAuthStore(state => state.setProfile);
-  const navigate = useNavigate();
   const [refreshing, setRefreshing] = useState(true);
 
   // Read payment details from localStorage (saved by PaymentModal)
@@ -25,9 +26,11 @@ export default function PaymentSuccessPage() {
     return null;
   });
 
-  // Refresh profile to reflect premium status
+  // Refresh profile from backend to reflect premium status
   useEffect(() => {
     let cancelled = false;
+    let retryCount = 0;
+    const maxRetries = 3;
 
     const refreshProfile = async () => {
       if (!user?.id) {
@@ -35,16 +38,28 @@ export default function PaymentSuccessPage() {
         return;
       }
       try {
-        const { data } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
-        if (!cancelled && data) {
-          setProfile(data);
+        const response = await profileApi.get(user.id);
+        const updatedProfile = (response as { profile?: UserProfile }).profile;
+
+        if (!cancelled && updatedProfile) {
+          setProfile(updatedProfile);
+
+          // Show success toast if premium is now active
+          if (updatedProfile.is_premium) {
+            toast.success('🎉 Paiement confirmé !', {
+              description: 'Votre compte Premium est maintenant actif. Profitez de tout le contenu culturel !',
+              duration: 8000,
+            });
+          }
         }
       } catch {
-        // Silent — profile will refresh elsewhere
+        // Retry on failure
+        if (!cancelled && retryCount < maxRetries) {
+          retryCount++;
+          console.log(`[PaymentSuccess] Profile refresh retry ${retryCount}/${maxRetries}`);
+          setTimeout(refreshProfile, 2000 * retryCount); // Exponential backoff
+          return;
+        }
       } finally {
         if (!cancelled) setRefreshing(false);
       }

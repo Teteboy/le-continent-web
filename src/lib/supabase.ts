@@ -24,16 +24,26 @@ function serialLock<T>(name: string, _acquireTimeout: number, fn: () => Promise<
   const prev = queues.get(name) ?? Promise.resolve();
   
   // Create new promise that runs after previous completes
-  // Don't use timeout - let it wait indefinitely to avoid breaking operations
-  const next = prev
-    .then(() => fn())
-    .catch(err => {
-      console.warn('Serial lock error:', err.message);
-      // Return null instead of throwing to prevent chain breakage
-      return null as unknown as T;
-    });
+  // Use a longer timeout to prevent premature timeouts (15 seconds)
+  const next = Promise.race([
+    prev.then(() => fn()),
+    new Promise<T>((_, reject) => 
+      setTimeout(() => reject(new Error('LOCK_TIMEOUT')), 15000)
+    )
+  ]).catch(err => {
+    if (err.message === 'LOCK_TIMEOUT') {
+      console.warn('[Supabase] Operation timed out - retrying directly');
+      // On timeout, execute directly without waiting
+      return fn();
+    }
+    if (err.message) {
+      console.warn('[Supabase] Serial lock error:', err.message);
+    }
+    // Return null instead of throwing to prevent chain breakage
+    return null as unknown as T;
+  });
   
-  // Update queue - track completion (use 'queues', not 'queries')
+  // Update queue - track completion
   queues.set(name, next.then(() => {}, () => {}));
   
   return next;
@@ -86,15 +96,23 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   global: {
     fetch: (url, options) => {
       // Add timeout to prevent infinite hanging
-      // 30s for mobile networks that may be slow after idle/background
+      // 45s for mobile networks that may be slow after idle/background
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000);
+      const timeout = setTimeout(() => {
+        console.warn('[Supabase] Fetch timeout for:', url);
+        controller.abort();
+      }, 45000);
 
       return fetch(url, {
         ...options,
         signal: controller.signal,
       }).finally(() => {
         clearTimeout(timeout);
+      }).catch(err => {
+        if (err.name === 'AbortError') {
+          console.error('[Supabase] Fetch aborted (timeout):', url);
+        }
+        throw err;
       });
     },
   },
